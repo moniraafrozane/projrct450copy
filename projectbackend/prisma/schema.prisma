@@ -1,0 +1,153 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+        
+
+model User {
+  id                    String    @id @default(uuid())
+  
+  // Basic Information
+  name                  String
+  email                 String    @unique
+  password              String
+  phone                 String?
+  role                  Role      @default(student)
+  
+  // Student-specific fields
+  studentId             String?   @unique
+  program               String?
+  year                  Int?
+  
+  // Society-specific fields
+  societyName           String?
+  societyRole           String?
+  
+  // Account status
+  isActive              Boolean   @default(true)
+  isEmailVerified       Boolean   @default(false)
+  
+  // Timestamps
+  lastLogin             DateTime?
+  passwordChangedAt     DateTime?
+  passwordResetToken    String?
+  passwordResetExpires  DateTime?
+  
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  
+  @@map("users")
+}
+
+enum Role {
+  student
+  admin
+  society
+}
+
+model Event {
+  id                    String              @id @default(uuid())
+  
+  // Event Information
+  title                 String
+  description           String
+  eventType             String?             // Workshop, Seminar, Competition, etc.
+  category              String?
+  venue                 String
+  eventDate             DateTime
+  startTime             String
+  endTime               String
+  
+  // Speaker/Guest Information
+  speaker               String?             // Speaker or guest name
+  
+  // Participant Details
+  eligibility           String?             // Who can participate
+  keyTopics             String?             // Main topics/agenda
+  benefits              String?             // Benefits/perks for participants
+  
+  // Registration details
+  maxParticipants       Int?
+  registrationDeadline  DateTime?
+  registrationFee       Float               @default(0)
+  registrationDetails   String?             // How to register, requirements
+  
+  // Organizer information
+  organizerId           String
+  organizerName         String              // CSE Society or other
+  organizerContact      String?
+  contactInfo           String?             // Email, phone, etc.
+  
+  // Event status
+  status                EventStatus         @default(upcoming)
+  isPublished           Boolean             @default(true)
+  
+  // Media
+  bannerImage           String?
+  
+  // Timestamps
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  
+  // Relations
+  registrations         EventRegistration[]
+  
+  @@map("events")
+}
+
+model EventRegistration {
+  id                    String              @id @default(uuid())
+  
+  // Participant information
+  userId                String
+  userName              String
+  userEmail             String
+  userPhone             String?
+  
+  // Event reference
+  eventId               String
+  event                 Event               @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  
+  // Registration details
+  registrationDate      DateTime            @default(now())
+  status                RegistrationStatus  @default(confirmed)
+  paymentStatus         PaymentStatus       @default(pending)
+  
+  // Additional information
+  remarks               String?
+  
+  // Timestamps
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  
+  @@unique([userId, eventId])
+  @@map("event_registrations")
+}
+
+enum EventStatus {
+  upcoming
+  ongoing
+  completed
+  cancelled
+}
+
+enum RegistrationStatus {
+  confirmed
+  waitlisted
+  cancelled
+}
+
+enum PaymentStatus {
+  pending
+  paid
+  refunded
+}
