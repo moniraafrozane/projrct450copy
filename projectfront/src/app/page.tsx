@@ -6,91 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import api, { Event } from "@/lib/api";
-
-// Demo upcoming events
-const demoUpcomingEvents: Event[] = [
-  {
-    id: "demo-1",
-    title: "AI & Machine Learning Workshop",
-    description: "Join us for an intensive hands-on workshop covering the fundamentals of AI and ML. Learn about neural networks, deep learning, and practical applications in real-world scenarios.",
-    eventType: "Workshop",
-    category: "Technical",
-    venue: "CSE lab 629",
-    eventDate: "2026-02-15",
-    startTime: "10:00",
-    endTime: "16:00",
-    speaker: "Dr. Sarah Johnson - AI Research Lead at Tech Corp",
-    eligibility: "All CSE students",
-    keyTopics: "Neural Networks, Deep Learning, TensorFlow",
-    benefits: "Certificate, Learning Materials, Networking",
-    maxParticipants: 100,
-    registrationDeadline: "2026-02-12",
-    registrationFee: 0,
-    organizerId: "cse-society",
-    organizerName: "CSE Society",
-    organizerContact: "cse.society@university.edu",
-    status: "upcoming",
-    isPublished: true,
-    bannerImage: "https://images.unsplash.com/photo-1677442136019-21780ecad995?w=800&h=400&fit=crop",
-    createdAt: "2026-02-01T00:00:00.000Z",
-    updatedAt: "2026-02-01T00:00:00.000Z",
-    _count: { registrations: 45 }
-  },
-  {
-    id: "demo-2",
-    title: "Hackathon 2026: Code for Change",
-    description: "24-hour coding marathon to solve real-world problems. Form teams, build innovative solutions, and compete for exciting prizes. Industry mentors will guide you throughout.",
-    eventType: "Competition",
-    category: "Technical",
-    venue: "CSE lab 303",
-    eventDate: "2026-02-20",
-    startTime: "09:00",
-    endTime: "09:00",
-    speaker: "Multiple Industry Mentors",
-    eligibility: "All students (Teams of 3-4)",
-    keyTopics: "Problem Solving, Team Collaboration, Innovation",
-    benefits: "Cash Prizes, Internship Opportunities, Swag",
-    maxParticipants: 200,
-    registrationDeadline: "2026-02-17",
-    registrationFee: 0,
-    organizerId: "cse-society",
-    organizerName: "CSE Society",
-    organizerContact: "hackathon@cse.edu",
-    status: "upcoming",
-    isPublished: true,
-    bannerImage: "https://images.unsplash.com/photo-1504384308090-c894fdcc538d?w=800&h=400&fit=crop",
-    createdAt: "2026-02-01T00:00:00.000Z",
-    updatedAt: "2026-02-01T00:00:00.000Z",
-    _count: { registrations: 78 }
-  },
-  {
-    id: "demo-3",
-    title: "Web Development Bootcamp",
-    description: "Master modern web development with React, Next.js, and Node.js. Build full-stack applications from scratch with hands-on projects and expert guidance.",
-    eventType: "Workshop",
-    category: "Technical",
-    venue: "CSE lab 304",
-    eventDate: "2026-02-25",
-    startTime: "14:00",
-    endTime: "18:00",
-    speaker: "Mark Thompson - Senior Full Stack Developer",
-    eligibility: "Students with basic programming knowledge",
-    keyTopics: "React, Next.js, Node.js, REST APIs",
-    benefits: "Project Portfolio, Certificate, Career Guidance",
-    maxParticipants: 60,
-    registrationDeadline: "2026-02-22",
-    registrationFee: 0,
-    organizerId: "cse-society",
-    organizerName: "CSE Society",
-    organizerContact: "webdev@cse.edu",
-    status: "upcoming",
-    isPublished: true,
-    bannerImage: "https://images.unsplash.com/photo-1498050108023-c5249f4df085?w=800&h=400&fit=crop",
-    createdAt: "2026-02-01T00:00:00.000Z",
-    updatedAt: "2026-02-01T00:00:00.000Z",
-    _count: { registrations: 32 }
-  }
-];
+import { demoUpcomingEvents } from "@/data/events";
 
 // Demo ongoing/live events
 const demoOngoingEvents: Event[] = [
@@ -344,11 +260,6 @@ export default function Home() {
             </span>
           )}
         </div>
-        {event.status === 'upcoming' && (
-          <Button asChild variant="outline" className="w-full mt-2">
-            <Link href={`/student/events`}>Register Now</Link>
-          </Button>
-        )}
       </div>
     </Card>
   );
@@ -375,7 +286,7 @@ export default function Home() {
             <p className="text-muted-foreground">Don't miss out on these exciting events!</p>
           </div>
           <Button asChild variant="outline">
-            <Link href="/student/events">View All</Link>
+            <Link href="/events?status=upcoming">View All</Link>
           </Button>
         </div>
         {loading ? (
@@ -404,6 +315,9 @@ export default function Home() {
             <h2 className="text-3xl font-bold"> Ongoing Events</h2>
             <p className="text-muted-foreground">Currently happening now!</p>
           </div>
+          <Button asChild variant="outline">
+            <Link href="/events?status=ongoing">View All</Link>
+          </Button>
         </div>
         {loading ? (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -431,6 +345,9 @@ export default function Home() {
             <h2 className="text-3xl font-bold"> Past Events</h2>
             <p className="text-muted-foreground">Check out what we've accomplished!</p>
           </div>
+          <Button asChild variant="outline">
+            <Link href="/events?status=completed">View All</Link>
+          </Button>
         </div>
         {loading ? (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
