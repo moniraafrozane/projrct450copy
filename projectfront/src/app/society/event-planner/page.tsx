@@ -117,9 +117,11 @@ export default function SocietyEventPlannerPage() {
 
     try {
       const response = await api.post('/events', formData);
-      
-      if (response.data.success) {
-        setSuccess("Event created successfully!");
+
+      const isCreated = response?.data?.success || response?.status === 201;
+
+      if (isCreated) {
+        setSuccess("event created successfully");
         setTimeout(() => {
           router.push('/society');
         }, 2000);
@@ -191,14 +193,12 @@ export default function SocietyEventPlannerPage() {
                 required
               >
                 <option value="">Select type</option>
+                <option value="Tech">Tech</option>
+                <option value="Cultural">Cultural</option>
+                <option value="Community">Community</option>
+                <option value="Sport">Sport</option>
                 <option value="Workshop">Workshop</option>
                 <option value="Seminar">Seminar</option>
-                <option value="Competition">Competition</option>
-                <option value="Hackathon">Hackathon</option>
-                <option value="Conference">Conference</option>
-                <option value="Cultural">Cultural Event</option>
-                <option value="Sports">Sports Event</option>
-                <option value="Other">Other</option>
               </select>
             </div>
 
