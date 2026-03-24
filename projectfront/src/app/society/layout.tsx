@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { ModuleNav } from "@/components/navigation/module-nav";
+import ProtectedRoute from "@/components/auth/ProtectedRoute";
 
 const links = [
   { href: "/society", label: "Dashboard" },
@@ -18,19 +19,21 @@ export const metadata: Metadata = {
 
 export default function SocietyLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="space-y-10">
-      <div className="rounded-3xl border border-border/70 bg-card/80 p-6">
-        <div className="flex flex-col gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold text-foreground">Society Ops Studio</h1>
-            <p className="text-sm text-muted-foreground">
-              Manage budgets, pass student applications to admins, and submit post-event reports.
-            </p>
+    <ProtectedRoute allowedRoles={["society"]} redirectTo="/login">
+      <div className="space-y-10">
+        <div className="rounded-3xl border border-border/70 bg-card/80 p-6">
+          <div className="flex flex-col gap-4">
+            <div>
+              <h1 className="text-2xl font-semibold text-foreground">Society Ops Studio</h1>
+              <p className="text-sm text-muted-foreground">
+                Manage budgets, pass student applications to admins, and submit post-event reports.
+              </p>
+            </div>
+            <ModuleNav items={links} />
           </div>
-          <ModuleNav items={links} />
         </div>
+        {children}
       </div>
-      {children}
-    </div>
+    </ProtectedRoute>
   );
 }
