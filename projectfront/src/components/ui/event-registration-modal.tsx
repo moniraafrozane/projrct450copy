@@ -12,6 +12,7 @@ interface EventRegistrationModalProps {
   onSubmit: (registrationData: {
     fullName: string;
     email: string;
+    userPhone: string;
     registrationNumber: string;
     teamName: string;
     institution: string;
@@ -31,6 +32,7 @@ export function EventRegistrationModal({
   const [formData, setFormData] = useState({
     fullName: "",
     email: "",
+    userPhone: userPhone || "",
     registrationNumber: userRegistrationNumber || "",
     teamName: "",
     institution: "",
@@ -130,19 +132,20 @@ export function EventRegistrationModal({
             />
           </label>
 
-          {/* Phone Number (Read-only) */}
-          {userPhone && (
-            <label className="flex flex-col gap-2 text-sm">
-              <span className="font-medium text-foreground">Phone Number</span>
-              <input
-                type="tel"
-                value={userPhone}
-                disabled
-                className="rounded-2xl border border-border/70 bg-muted/40 px-4 py-3 text-base text-muted-foreground disabled:opacity-50"
-              />
-              <span className="text-xs text-muted-foreground">Auto-filled from your profile</span>
-            </label>
-          )}
+          {/* Phone Number */}
+          <label className="flex flex-col gap-2 text-sm">
+            <span className="font-medium text-foreground">Phone Number</span>
+            <input
+              type="tel"
+              name="userPhone"
+              value={formData.userPhone}
+              onChange={handleChange}
+              disabled={isLoading}
+              className="rounded-2xl border border-border/70 bg-background px-4 py-3 text-base text-foreground placeholder:text-muted-foreground disabled:opacity-50"
+              placeholder="e.g., 01318194008"
+            />
+            <span className="text-xs text-muted-foreground">Auto-filled from your profile. You can edit it.</span>
+          </label>
 
           {/* Registration Number */}
           <label className="flex flex-col gap-2 text-sm">
