@@ -44,15 +44,22 @@ app.use(express.urlencoded({ extended: true }));
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // limit each IP to 100 requests per windowMs
-  message: 'Too many requests from this IP, please try again later.'
+  skip: (req) => req.path.startsWith('/api/auth/') || req.path === '/api/health',
+  message: {
+    success: false,
+    message: 'Too many requests from this IP, please try again later.'
+  }
 });
 app.use('/api/', limiter);
 
 // Stricter rate limiting for auth routes
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // limit each IP to 5 requests per windowMs
-  message: 'Too many login attempts, please try again later.'
+  max: process.env.NODE_ENV === 'development' ? 50 : 10,
+  message: {
+    success: false,
+    message: 'Too many login attempts, please try again later.'
+  }
 });
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
@@ -63,7 +70,15 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/events', require('./routes/events'));
+const _postEventsModule = require('./routes/postEvents');
+app.use('/api/events/:eventId', _postEventsModule);                     // post-event reporting (event-scoped)
+app.use('/api/post-event-reports', _postEventsModule.standaloneRouter); // all-reports + generic template
 app.use('/api/upload', require('./routes/upload'));
+app.use('/api/positions', require('./routes/positions'));
+app.use('/api/committees', require('./routes/committee'));
+app.use('/api/applications', require('./routes/applications'));
+app.use('/api/student-affairs', require('./routes/studentAffairs'));
+app.use('/api/vouchers', require('./routes/vouchers'));
 
 // Health check route
 app.get('/api/health', (req, res) => {
@@ -86,7 +101,7 @@ app.use((req, res) => {
 app.use(errorHandler);
 
 // Start server
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5000;
 const server = app.listen(PORT, () => {
   console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
 });
