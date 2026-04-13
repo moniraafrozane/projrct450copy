@@ -18,13 +18,13 @@ model User {
   
   // Basic Information
   name                  String
-  email                 String    @unique
+  email                 String   @unique
   password              String
   phone                 String?
-  role                  Role      @default(student)
+  roles                 Role[]   @default([student])
   
   // Student-specific fields
-  studentId             String?   @unique
+  studentId             String?  @unique
   program               String?
   year                  Int?
   
@@ -45,6 +45,16 @@ model User {
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
   
+  // Relations
+  positions             Position[]
+  committeeMemberships  CommitteeMember[]
+  submittedFeePayments  StudentFeePayment[] @relation("StudentFeePayments")
+  reviewedFeePayments   StudentFeePayment[] @relation("ReviewedFeePayments")
+  submittedFeeReceipts  StudentFeeReceipt[] @relation("StudentFeeReceipts")
+  reviewedFeeReceipts   StudentFeeReceipt[] @relation("ReviewedFeeReceipts")
+  createdVouchers       Voucher[]           @relation("CreatedVouchers")
+  reviewedVouchers      Voucher[]           @relation("ReviewedVouchers")
+
   @@map("users")
 }
 
@@ -100,6 +110,8 @@ model Event {
   
   // Relations
   registrations         EventRegistration[]
+  vouchers              Voucher[]
+  eventReports          EventReport[]
   
   @@map("events")
 }
@@ -112,6 +124,9 @@ model EventRegistration {
   userName              String
   userEmail             String
   userPhone             String?
+  registrationNumber    String?             // Student ID/Registration number
+  teamName              String?             // Team name if applicable
+  institution           String?             // Institution name
   
   // Event reference
   eventId               String
@@ -124,6 +139,9 @@ model EventRegistration {
   
   // Additional information
   remarks               String?
+
+  // Audit trail
+  logs                  EventRegistrationLog[]
   
   // Timestamps
   createdAt             DateTime            @default(now())
@@ -131,6 +149,28 @@ model EventRegistration {
   
   @@unique([userId, eventId])
   @@map("event_registrations")
+}
+
+model EventRegistrationLog {
+  id                    String                    @id @default(uuid())
+
+  registrationId        String
+  registration          EventRegistration         @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+
+  eventType             RegistrationLogEventType
+  actorRole             RegistrationLogActorRole  @default(system)
+  actorId               String?
+  actorName             String?
+  message               String
+
+  previousStatus        RegistrationStatus?
+  nextStatus            RegistrationStatus?
+
+  metadata              Json?
+  createdAt             DateTime                  @default(now())
+
+  @@index([registrationId, createdAt])
+  @@map("event_registration_logs")
 }
 
 enum EventStatus {
@@ -146,8 +186,317 @@ enum RegistrationStatus {
   cancelled
 }
 
+enum RegistrationLogEventType {
+  submitted
+  under_review
+  approved
+  rejected
+  comment_added
+  certificate_uploaded
+  certificate_ready
+  email_sent
+  receipt_generated
+}
+
+enum RegistrationLogActorRole {
+  student
+  admin
+  system
+}
+
 enum PaymentStatus {
   pending
   paid
   refunded
+}
+
+model Position {
+  id                    String    @id @default(uuid())
+  
+  // Position information
+  title                 String    @unique
+  description           String?
+  
+  // Assigned user
+  userId                String?
+  user                  User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
+  // Status
+  isActive              Boolean   @default(true)
+  
+  // Timestamps
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  
+  @@map("positions")
+}
+
+// ─── Committee Management ───────────────────────────────────────────
+
+enum CommitteeRole {
+  VICE_PRESIDENT
+  GENERAL_SECRETARY
+  EVENT_CULTURAL_SECRETARY
+  SPORTS_SECRETARY
+  PUBLICATION_SECRETARY
+  ASSISTANT_EVENT_CULTURAL_SECRETARY
+  EXECUTIVE_MEMBER
+}
+
+model Committee {
+  id                    String              @id @default(uuid())
+  
+  // Term information
+  name                  String              // e.g. "Spring 2026"
+  termStart             DateTime
+  termEnd               DateTime
+  
+  // Status
+  isActive              Boolean             @default(true)
+  
+  // Timestamps
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  
+  // Relations
+  members               CommitteeMember[]
+  
+  @@map("committees")
+}
+
+model CommitteeMember {
+  id                    String              @id @default(uuid())
+  
+  // Committee reference
+  committeeId           String
+  committee             Committee           @relation(fields: [committeeId], references: [id], onDelete: Cascade)
+  
+  // User reference
+  userId                String
+  user                  User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Role in the committee
+  role                  CommitteeRole
+  
+  // Timestamps
+  assignedAt            DateTime            @default(now())
+  
+  @@unique([committeeId, userId, role])
+  @@map("committee_members")
+}
+
+// ─── Society Applications ───────────────────────────────────────────
+
+model SocietyApplication {
+  id              String   @id @default(uuid())
+
+  // Application type: fund_withdrawal | event_approval | resource_request
+  type            String
+
+  // Auto-generated subject line
+  subject         String
+
+  // All dynamic form fields stored as JSON (varies by type)
+  content         Json
+
+  // Workflow status: draft | submitted | under_review | approved | returned
+  status          String   @default("draft")
+
+  // Admin feedback
+  adminNotes      String?
+
+  // Collaborative member notes – array of {authorId, authorName, text, createdAt}
+  memberNotes     Json     @default("[]")
+
+  // Author details (denormalised so no User relation needed on this model)
+  createdById     String
+  createdByName   String
+
+  // Timestamps
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  linkedVouchers  Voucher[]
+  eventReports    EventReport[]
+
+  @@map("society_applications")
+}
+
+enum VoucherStatus {
+  draft
+  submitted
+  under_review
+  approved
+  rejected
+}
+
+model Voucher {
+  id                String          @id @default(uuid())
+  title             String
+  description       String?
+  amount            Float
+  status            VoucherStatus   @default(draft)
+
+  receiptFileUrl    String
+  receiptFileName   String
+  receiptMimeType   String
+
+  eventId           String
+  event             Event           @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  budgetApplicationId String?
+  budgetApplication   SocietyApplication? @relation(fields: [budgetApplicationId], references: [id], onDelete: SetNull)
+
+  createdById       String
+  createdBy         User            @relation("CreatedVouchers", fields: [createdById], references: [id], onDelete: Cascade)
+
+  reviewedById      String?
+  reviewedBy        User?           @relation("ReviewedVouchers", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt        DateTime?
+  adminDecisionNote String?
+
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([status, createdAt])
+  @@index([eventId, status])
+  @@index([createdById, status])
+  @@index([budgetApplicationId])
+  @@map("vouchers")
+}
+
+// ─── Post-Event Reporting ──────────────────────────────────────────
+
+enum EventReportStatus {
+  draft
+  submitted
+  under_review
+  approved
+  returned
+}
+
+model EventReport {
+  id                    String            @id @default(uuid())
+
+  // Event reference
+  eventId               String
+  event                 Event             @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  // Section data (all stored as JSON for flexibility)
+  // attendanceRecord: { totalRegistered, totalAttended, attendeeList: [{name,id,email,department,attended,remarks}] }
+  attendanceRecord      Json?
+
+  // eventInsights: { keyHighlights, challengesFaced, improvementsSuggested, overallAssessment }
+  eventInsights         Json?
+
+  // expenseNotes: { notes } — actual data derived from Vouchers
+  expenseNotes          String?
+
+  // Linked budget application (optional) for comparison source
+  budgetApplicationId   String?
+  budgetApplication     SocietyApplication? @relation(fields: [budgetApplicationId], references: [id], onDelete: SetNull)
+
+  // Workflow
+  status                EventReportStatus @default(draft)
+  adminNotes            String?
+  submittedAt           DateTime?
+  reviewedAt            DateTime?
+
+  // Author
+  createdById           String
+  createdByName         String
+
+  // Reviewer
+  reviewedById          String?
+  reviewedByName        String?
+
+  // Timestamps
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  // Relations
+  media                 EventReportMedia[]
+
+  @@index([eventId, status])
+  @@index([createdById, status])
+  @@index([status, createdAt])
+  @@map("event_reports")
+}
+
+model EventReportMedia {
+  id            String      @id @default(uuid())
+
+  reportId      String
+  report        EventReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  fileUrl       String
+  fileName      String
+  mimeType      String
+  fileSize      Int         // bytes
+  mediaType     String      // photos | video | document
+
+  description   String?
+
+  uploadedById  String
+  uploadedByName String
+
+  createdAt     DateTime    @default(now())
+
+  @@index([reportId])
+  @@map("event_report_media")
+}
+
+enum StudentFeePaymentStatus {
+  pending
+  paid
+}
+
+enum StudentFeeReceiptStatus {
+  pending
+  accepted
+  rejected
+}
+
+model StudentFeePayment {
+  id             String                  @id @default(uuid())
+  studentId      String
+  student        User                    @relation("StudentFeePayments", fields: [studentId], references: [id], onDelete: Cascade)
+  reference      String
+  paymentDate    DateTime
+  amount         Float
+  notes          String?
+  status         StudentFeePaymentStatus @default(pending)
+  verifiedById   String?
+  verifiedBy     User?                   @relation("ReviewedFeePayments", fields: [verifiedById], references: [id], onDelete: SetNull)
+  verifiedAt     DateTime?
+  receipt        StudentFeeReceipt?
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+
+  @@index([studentId, status])
+  @@index([createdAt])
+  @@map("student_fee_payments")
+}
+
+model StudentFeeReceipt {
+  id             String                  @id @default(uuid())
+  paymentId      String                  @unique
+  payment        StudentFeePayment       @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  studentId      String
+  student        User                    @relation("StudentFeeReceipts", fields: [studentId], references: [id], onDelete: Cascade)
+  fileUrl        String
+  fileName       String
+  mimeType       String
+  status         StudentFeeReceiptStatus @default(pending)
+  adminNote      String?
+  reviewedById   String?
+  reviewedBy     User?                   @relation("ReviewedFeeReceipts", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt     DateTime?
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+
+  @@index([studentId, status])
+  @@index([status, createdAt])
+  @@map("student_fee_receipts")
 }
