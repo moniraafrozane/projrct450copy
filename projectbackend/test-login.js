@@ -5,8 +5,8 @@ async function testLogin() {
     // Test student login
     console.log('Testing student login...');
     const response = await axios.post('http://localhost:5000/api/auth/login', {
-      email: 'ane@gmail.com',
-      password: 'test123', // You'll need to use the correct password
+      email: 'test@gmail.com',
+      password: 'test123',
       role: 'student'
     });
     
