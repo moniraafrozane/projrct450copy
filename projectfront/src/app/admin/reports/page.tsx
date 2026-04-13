@@ -42,7 +42,10 @@ export default function AdminReportsPage() {
       <PageHeader
         title="Analytics & exports"
         description="Generate analytical reports on students, events, budgets, and finances."
-        actions={[{ label: "Export PDF", href: "#" }]}
+        actions={[
+          { label: "Generate report", href: "#" },
+          { label: "Export PDF", href: "#" }
+        ]}
       />
 
       <SectionCard title="Snapshots" description="Quick metrics rendered via charts/widgets.">

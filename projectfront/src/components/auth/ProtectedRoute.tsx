@@ -30,7 +30,7 @@ export default function ProtectedRoute({
       // Check if user has required role
       if (allowedRoles && allowedRoles.length > 0) {
         const user = getStoredUser();
-        if (!user || !allowedRoles.includes(user.role)) {
+        if (!user || !user.roles?.some(r => allowedRoles.includes(r))) {
           router.push("/");
           return;
         }

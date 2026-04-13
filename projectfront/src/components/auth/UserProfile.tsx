@@ -33,10 +33,12 @@ export default function UserProfile() {
           <p className="text-sm text-muted-foreground">{user.email}</p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="inline-flex rounded-full bg-primary/10 px-3 py-1 text-xs font-medium capitalize text-primary">
-            {user.role}
-          </span>
+        <div className="flex flex-wrap items-center gap-2">
+          {user.roles?.map((role) => (
+            <span key={role} className="inline-flex rounded-full bg-primary/10 px-3 py-1 text-xs font-medium capitalize text-primary">
+              {role}
+            </span>
+          ))}
           {user.isActive && (
             <span className="inline-flex rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700">
               Active

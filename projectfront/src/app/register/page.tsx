@@ -40,12 +40,14 @@ function RegisterPageContent() {
     return "student";
   }, [rawRole]);
 
-  const selectedRole = useMemo(() =>
-    rawRole
+  const selectedRole = useMemo(() => {
+    // Display "Society Member" for society role
+    if (normalizedRole === "society") return "Society Member";
+    return rawRole
       .split(" ")
       .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
-      .join(" "),
-  [rawRole]);
+      .join(" ");
+  }, [rawRole, normalizedRole]);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -85,6 +87,18 @@ function RegisterPageContent() {
       return;
     }
 
+    if (normalizedRole === "student") {
+      if (!formData.registrationNumber.trim()) {
+        setError("Registration number is required for student signup");
+        return;
+      }
+
+      if (!formData.phone.trim()) {
+        setError("Phone number is required for student signup");
+        return;
+      }
+    }
+
     setIsLoading(true);
 
     try {
@@ -97,21 +111,21 @@ function RegisterPageContent() {
 
       // Add role-specific fields
       if (normalizedRole === "student") {
-        registerData.registrationNumber = formData.registrationNumber || undefined;
+        registerData.studentId = formData.registrationNumber.trim();
+        registerData.phone = formData.phone.trim();
         registerData.program = formData.program || undefined;
         registerData.year = formData.year ? parseInt(formData.year) : undefined;
       } else if (normalizedRole === "society") {
         registerData.societyRole = formData.societyRole || undefined;
       } else if (normalizedRole === "admin") {
-        registerData.phone = formData.phone;
+        registerData.phone = formData.phone.trim();
       }
 
       const response = await register(registerData);
 
       if (response.success) {
-        // Redirect to role-specific dashboard
-        const redirectPath = getRedirectPath(response.user);
-        router.push(redirectPath);
+        // Redirect to homepage
+        router.push("/");
       }
     } catch (err: any) {
       const errorMessage = err.response?.data?.message || "Registration failed. Please try again.";
@@ -128,7 +142,7 @@ function RegisterPageContent() {
           title={`Sign Up as ${selectedRole}`}
           description="Share your details below so we can activate the right workspace for you."
           actions={[
-            { label: "Back to login", href: `/login?role=${rawRole}`, variant: "secondary" },
+            { label: "Back to login", href: "/login", variant: "secondary" },
             { label: "Return home", href: "/", variant: "outline" },
           ]}
         />
@@ -186,15 +200,29 @@ function RegisterPageContent() {
               {normalizedRole === "student" && (
                 <>
                   <label className="flex flex-col gap-2 text-sm">
-                    Regiatration Number
+                    Registration Number *
                     <input
                       type="text"
                       name="registrationNumber"
                       value={formData.registrationNumber}
                       onChange={handleChange}
+                      required
                       disabled={isLoading}
                       className="rounded-2xl border border-border/70 bg-background px-4 py-3 text-base text-foreground disabled:opacity-50"
                       placeholder="20XX331XXX"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-2 text-sm">
+                    Phone number *
+                    <input
+                      type="tel"
+                      name="phone"
+                      value={formData.phone}
+                      onChange={handleChange}
+                      required
+                      disabled={isLoading}
+                      className="rounded-2xl border border-border/70 bg-background px-4 py-3 text-base text-foreground disabled:opacity-50"
+                      placeholder="e.g., +88 017XXXXXXXX"
                     />
                   </label>
                   <label className="flex flex-col gap-2 text-sm">
@@ -274,6 +302,7 @@ function RegisterPageContent() {
                   className="rounded-2xl border border-border/70 bg-background px-4 py-3 text-base text-foreground disabled:opacity-50"
                   placeholder="••••••••"
                 />
+                <p className="text-xs text-muted-foreground">Password must be at least 6 characters long</p>
               </label>
               <label className="flex flex-col gap-2 text-sm">
                 Confirm password *

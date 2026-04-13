@@ -66,9 +66,8 @@ export default function SocietyRegisterPage() {
       });
 
       if (response.success) {
-        // Redirect to society dashboard
-        const redirectPath = getRedirectPath(response.user);
-        router.push(redirectPath);
+        // Redirect to homepage
+        router.push("/");
       }
     } catch (err: any) {
       const errorMessage = err.response?.data?.message || "Registration failed. Please try again.";
@@ -85,7 +84,7 @@ export default function SocietyRegisterPage() {
           title="Join as Society Member"
           description="Register to manage society activities and events."
           actions={[
-            { label: "Society login", href: "/society/login", variant: "secondary" },
+            { label: "Login", href: "/login", variant: "secondary" },
             { label: "Return home", href: "/", variant: "outline" },
           ]}
         />

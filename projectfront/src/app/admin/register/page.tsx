@@ -60,9 +60,8 @@ export default function AdminRegisterPage() {
       });
 
       if (response.success) {
-        // Redirect to admin dashboard
-        const redirectPath = getRedirectPath(response.user);
-        router.push(redirectPath);
+        // Redirect to homepage
+        router.push("/");
       }
     } catch (err: any) {
       const errorMessage = err.response?.data?.message || "Registration failed. Please try again.";
@@ -79,7 +78,7 @@ export default function AdminRegisterPage() {
           title="Create Admin Account"
           description="Register as an administrator to manage the system."
           actions={[
-            { label: "Admin login", href: "/admin/login", variant: "secondary" },
+            { label: "Login", href: "/login", variant: "secondary" },
             { label: "Return home", href: "/", variant: "outline" },
           ]}
         />

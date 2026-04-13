@@ -49,7 +49,7 @@ export default function SignupChoicePage() {
             title="Society Member"
             description=""
           >
-            <Link href="/society/register">
+            <Link href="/society-member/register">
               <Button className="w-full" variant="outline">
                 Register as Society Member
               </Button>

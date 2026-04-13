@@ -5,7 +5,8 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  role: 'student' | 'admin' | 'society';
+  phone?: string;
+  roles: ('student' | 'admin' | 'society')[];
   studentId?: string;
   program?: string;
   year?: number;
@@ -50,6 +51,8 @@ export interface RegisterData {
 export interface UpdateProfileData {
   name?: string;
   email?: string;
+  phone?: string;
+  studentId?: string;
   program?: string;
   year?: number;
   societyName?: string;
@@ -181,21 +184,15 @@ export const isAuthenticated = (): boolean => {
  */
 export const hasRole = (role: string): boolean => {
   const user = getStoredUser();
-  return user?.role === role;
+  return user?.roles?.includes(role as 'student' | 'admin' | 'society') ?? false;
 };
 
 /**
  * Redirect based on user role
  */
 export const getRedirectPath = (user: User): string => {
-  switch (user.role) {
-    case 'admin':
-      return '/admin';
-    case 'society':
-      return '/society';
-    case 'student':
-      return '/student';
-    default:
-      return '/';
-  }
+  const roles = user.roles ?? [];
+  if (roles.includes('admin')) return '/admin';
+  if (roles.includes('society')) return '/society';
+  return '/student';
 };
