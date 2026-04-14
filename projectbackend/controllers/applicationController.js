@@ -1,5 +1,6 @@
 const prisma = require('../config/prisma');
 const PDFDocument = require('pdfkit');
+const { createAuditLog } = require('./auditLogController');
 
 const BUDGET_TYPE = 'budget_breakdown';
 
@@ -568,6 +569,26 @@ exports.approveApplication = async (req, res) => {
       data: { status: 'approved' },
     });
 
+    // Log audit trail
+    createAuditLog({
+      action: 'application_approved',
+      module: 'applications',
+      description: `Society application approved for society: ${existing.societyId}`,
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      actorName: req.user.name,
+      actorRole: 'admin',
+      resourceId: id,
+      resourceType: 'SocietyApplication',
+      resourceName: `Application ${existing.societyId}`,
+      previousValue: existing.status,
+      newValue: 'approved',
+      metadata: {
+        societyId: existing.societyId,
+        approvedAt: new Date().toISOString(),
+      }
+    }).catch(err => console.error('Audit log error:', err));
+
     res.json({ success: true, message: 'Application approved', application });
   } catch (error) {
     console.error('Approve application error:', error);
@@ -618,6 +639,27 @@ exports.returnApplication = async (req, res) => {
         adminNotes: adminNotes.trim(),
       },
     });
+
+    // Log audit trail
+    createAuditLog({
+      action: 'application_returned',
+      module: 'applications',
+      description: `Society application returned for society: ${existing.societyId}. Notes: ${adminNotes.trim()}`,
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      actorName: req.user.name,
+      actorRole: 'admin',
+      resourceId: id,
+      resourceType: 'SocietyApplication',
+      resourceName: `Application ${existing.societyId}`,
+      previousValue: existing.status,
+      newValue: 'returned',
+      metadata: {
+        societyId: existing.societyId,
+        adminNotes: adminNotes.trim(),
+        returnedAt: new Date().toISOString(),
+      }
+    }).catch(err => console.error('Audit log error:', err));
 
     res.json({ success: true, message: 'Application returned to society member', application });
   } catch (error) {

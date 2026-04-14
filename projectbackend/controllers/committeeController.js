@@ -1,4 +1,5 @@
 const prisma = require('../config/prisma');
+const { createAuditLog } = require('./auditLogController');
 
 // Roles that can only have ONE holder per committee (singleton roles)
 const SINGLETON_ROLES = [
@@ -58,6 +59,24 @@ exports.createCommittee = async (req, res) => {
       include: { members: { include: { user: true } } },
     });
 
+
+    createAuditLog({
+      action: 'committee_created',
+      module: 'committee',
+      description: `Committee created: ${committee.name}`,
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      actorName: req.user.name,
+      actorRole: 'admin',
+      resourceId: committee.id,
+      resourceType: 'Committee',
+      resourceName: committee.name,
+      metadata: {
+        termStart: committee.termStart,
+        termEnd: committee.termEnd,
+      },
+      ipAddress: req.ip,
+    }).catch((err) => console.error('Audit log error:', err));
     res.status(201).json({
       success: true,
       message: 'Committee created successfully',
@@ -233,6 +252,27 @@ exports.addMember = async (req, res) => {
         },
       },
     });
+
+    createAuditLog({
+      action: 'committee_member_added',
+      module: 'committee',
+      description: `Member added to committee ${committee.name}: ${member.user.name} as ${ROLE_LABELS[role] || role}`,
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      actorName: req.user.name,
+      actorRole: 'admin',
+      resourceId: member.id,
+      resourceType: 'CommitteeMember',
+      resourceName: `${member.user.name} - ${committee.name}`,
+      metadata: {
+        committeeId,
+        committeeName: committee.name,
+        userId,
+        memberName: member.user.name,
+        role,
+      },
+      ipAddress: req.ip,
+    }).catch((err) => console.error('Audit log error:', err));
 
     res.status(201).json({ success: true, message: 'Member added to committee', member });
   } catch (error) {

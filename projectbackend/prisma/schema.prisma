@@ -136,6 +136,12 @@ model EventRegistration {
   registrationDate      DateTime            @default(now())
   status                RegistrationStatus  @default(confirmed)
   paymentStatus         PaymentStatus       @default(pending)
+  attended              Boolean             @default(false)
+  attendedAt            DateTime?
+  certificateRequestStatus CertificateRequestStatus @default(not_requested)
+  certificateRequestedAt DateTime?
+  certificateFileUrl    String?             // Path to uploaded certificate PDF
+  certificateApprovedAt DateTime?           // When certificate was approved
   
   // Additional information
   remarks               String?
@@ -191,11 +197,20 @@ enum RegistrationLogEventType {
   under_review
   approved
   rejected
+  attendance_marked
+  certificate_requested
   comment_added
   certificate_uploaded
   certificate_ready
   email_sent
   receipt_generated
+}
+
+enum CertificateRequestStatus {
+  not_requested
+  pending
+  approved
+  rejected
 }
 
 enum RegistrationLogActorRole {
@@ -447,6 +462,33 @@ model EventReportMedia {
   @@map("event_report_media")
 }
 
+// ─── Admin Analytics Reports ───────────────────────────────────────
+
+model AnalyticsReport {
+  id              String   @id @default(uuid())
+
+  title           String
+  reportYear      Int
+  notes           String?
+
+  // Selected metrics and saved snapshot values
+  metricKeys      Json
+  metricValues    Json
+  filters         Json?
+
+  // Author
+  createdById     String
+  createdByName   String
+
+  // Timestamps
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([reportYear, createdAt])
+  @@index([createdById, createdAt])
+  @@map("analytics_reports")
+}
+
 enum StudentFeePaymentStatus {
   pending
   paid
@@ -499,4 +541,40 @@ model StudentFeeReceipt {
   @@index([studentId, status])
   @@index([status, createdAt])
   @@map("student_fee_receipts")
+}
+
+// ─── Admin Audit Log ───────────────────────────────────────────
+
+model AdminAuditLog {
+  id                String    @id @default(uuid())
+  
+  // Action details
+  action            String    // e.g., "certificate_approved", "voucher_rejected", "user_closed"
+  module            String    // "certificates", "vouchers", "users", "applications", "events"
+  description       String    // Human-readable message
+  
+  // Actor (who did it)
+  actorId           String
+  actorEmail        String    // Denormalized for audit trail integrity
+  actorName         String?   // Actor's name at time of action
+  actorRole         String    // "admin", "society"
+  
+  // Resource targeted
+  resourceId        String?   // ID of the affected entity
+  resourceType      String?   // "EventRegistration", "Voucher", "User", etc.
+  resourceName      String?   // Human-readable name (e.g., student name, event title)
+  
+  // Change tracking
+  previousValue     Json?     // Before state
+  newValue          Json?     // After state
+  metadata          Json?     // Context (reason, notes, etc.)
+  
+  ipAddress         String?   // Optional: for security
+  createdAt         DateTime  @default(now())
+  
+  @@index([actorId, createdAt])
+  @@index([module, createdAt])
+  @@index([resourceType, resourceId])
+  @@index([createdAt])
+  @@map("admin_audit_logs")
 }

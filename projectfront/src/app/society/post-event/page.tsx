@@ -8,8 +8,10 @@ import { SectionCard } from "@/components/patterns/section-card";
 import { Button } from "@/components/ui/button";
 import { Event, eventAPI } from "@/lib/api";
 import { EventReport, postEventAPI } from "@/lib/postEventApi";
+import { PendingCertificate, certificateAPI } from "@/lib/certificateApi";
 
 type ReportMap = Record<string, EventReport>;
+type CertificateMap = Record<string, PendingCertificate[]>;
 
 function reportPriority(report: EventReport) {
   if (report.status === "draft") return 3;
@@ -52,6 +54,10 @@ export default function PostEventPage() {
   const [message, setMessage] = useState("");
   const [creatingForEventId, setCreatingForEventId] = useState<string | null>(null);
   const [downloadingForEventId, setDownloadingForEventId] = useState<string | null>(null);
+  const [certificatesByEvent, setCertificatesByEvent] = useState<CertificateMap>({});
+  const [uploadingCertificate, setUploadingCertificate] = useState<string | null>(null);
+  const [approvingCertificate, setApprovingCertificate] = useState<string | null>(null);
+  const [rejectingCertificate, setRejectingCertificate] = useState<string | null>(null);
 
   const sortedEvents = useMemo(() => {
     return [...events].sort((a, b) => {
@@ -79,6 +85,20 @@ export default function PostEventPage() {
 
       setEvents(fetchedEvents);
       setReportsByEvent(reportMap);
+
+      // Fetch pending certificates for all events
+      const certMap: CertificateMap = {};
+      for (const event of fetchedEvents) {
+        try {
+          const certRes = await certificateAPI.getPendingCertificates(event.id);
+          if (certRes.pendingCertificates && certRes.pendingCertificates.length > 0) {
+            certMap[event.id] = certRes.pendingCertificates;
+          }
+        } catch (err) {
+          console.error(`Failed to fetch certificates for event ${event.id}:`, err);
+        }
+      }
+      setCertificatesByEvent(certMap);
     } catch (err: any) {
       setError(err?.response?.data?.message || "Failed to load post-event reporting data");
     } finally {
@@ -136,6 +156,88 @@ export default function PostEventPage() {
     }
   };
 
+  const handleUploadCertificate = async (
+    eventId: string,
+    registrationId: string,
+    file: File
+  ) => {
+    try {
+      const certificateId = `${eventId}-${registrationId}`;
+      setUploadingCertificate(certificateId);
+      setError("");
+      setMessage("");
+
+      const response = await certificateAPI.uploadCertificate(eventId, registrationId, file);
+      setMessage("Certificate uploaded successfully. Now click 'Forward to Student' to approve.");
+
+      // Refresh certificates for this event
+      const certRes = await certificateAPI.getPendingCertificates(eventId);
+      const newCertMap = { ...certificatesByEvent };
+      if (certRes.pendingCertificates && certRes.pendingCertificates.length > 0) {
+        newCertMap[eventId] = certRes.pendingCertificates;
+      } else {
+        delete newCertMap[eventId];
+      }
+      setCertificatesByEvent(newCertMap);
+    } catch (err: any) {
+      setError(err?.response?.data?.message || "Failed to upload certificate");
+    } finally {
+      setUploadingCertificate(null);
+    }
+  };
+
+  const handleApproveCertificate = async (eventId: string, registrationId: string) => {
+    try {
+      const certificateId = `${eventId}-${registrationId}`;
+      setApprovingCertificate(certificateId);
+      setError("");
+      setMessage("");
+
+      const response = await certificateAPI.approveCertificate(eventId, registrationId);
+      setMessage(response.notificationMessage || "Certificate approved and student notified.");
+
+      // Refresh certificates for this event
+      const certRes = await certificateAPI.getPendingCertificates(eventId);
+      const newCertMap = { ...certificatesByEvent };
+      if (certRes.pendingCertificates && certRes.pendingCertificates.length > 0) {
+        newCertMap[eventId] = certRes.pendingCertificates;
+      } else {
+        delete newCertMap[eventId];
+      }
+      setCertificatesByEvent(newCertMap);
+    } catch (err: any) {
+      setError(err?.response?.data?.message || "Failed to approve certificate");
+    } finally {
+      setApprovingCertificate(null);
+    }
+  };
+
+  const handleRejectCertificate = async (eventId: string, registrationId: string) => {
+    try {
+      const certificateId = `${eventId}-${registrationId}`;
+      setRejectingCertificate(certificateId);
+      setError("");
+      setMessage("");
+
+      const response = await certificateAPI.rejectCertificate(eventId, registrationId);
+      setMessage(response.message || "Certificate request rejected.");
+
+      // Refresh certificates for this event
+      const certRes = await certificateAPI.getPendingCertificates(eventId);
+      const newCertMap = { ...certificatesByEvent };
+      if (certRes.pendingCertificates && certRes.pendingCertificates.length > 0) {
+        newCertMap[eventId] = certRes.pendingCertificates;
+      } else {
+        delete newCertMap[eventId];
+      }
+      setCertificatesByEvent(newCertMap);
+    } catch (err: any) {
+      setError(err?.response?.data?.message || "Failed to reject certificate request");
+    } finally {
+      setRejectingCertificate(null);
+    }
+  };
+
   return (
     <div className="space-y-10">
       <PageHeader
@@ -146,22 +248,151 @@ export default function PostEventPage() {
         ]}
       />
 
+      {message && (
+        <div className="rounded-2xl border border-green-500/50 bg-green-50 px-4 py-3 text-sm text-green-700">
+          {message}
+        </div>
+      )}
+
+      {error && (
+        <div className="rounded-2xl border border-red-500/50 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      {/* Certificate Applications Card */}
+      {!loading && Object.keys(certificatesByEvent).length > 0 && (
+        <SectionCard
+          title="Certificate Applications"
+          description="Manage certificate applications from students. Upload the certificate PDF and forward it to the student."
+        >
+          <div className="space-y-4">
+            {sortedEvents.map((event) => {
+              const certificates = certificatesByEvent[event.id];
+              if (!certificates || certificates.length === 0) return null;
+
+              const dateLabel = event.eventDate
+                ? new Date(event.eventDate).toLocaleDateString("en-GB", {
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric",
+                  })
+                : "";
+
+              return (
+                <div key={`cert-${event.id}`} className="space-y-3">
+                  <div className="rounded-lg border border-border/70 bg-secondary/30 p-4">
+                    <p className="text-sm font-semibold text-foreground">{event.title}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {dateLabel} • {event.venue}
+                    </p>
+                  </div>
+
+                  {certificates.map((cert) => {
+                    const certificateId = `${event.id}-${cert.id}`;
+                    const isUploading = uploadingCertificate === certificateId;
+                    const isApproving = approvingCertificate === certificateId;
+                    const isRejecting = rejectingCertificate === certificateId;
+
+                    return (
+                      <div
+                        key={cert.id}
+                        className="ml-4 rounded-lg border border-border/50 p-4"
+                      >
+                        <div className="flex flex-col gap-3">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                              <p className="font-medium text-foreground">{cert.userName}</p>
+                              <p className="text-sm text-muted-foreground">{cert.userEmail}</p>
+                              {cert.registrationNumber && (
+                                <p className="text-xs text-muted-foreground">
+                                  Registration: {cert.registrationNumber}
+                                </p>
+                              )}
+                              <p className="text-xs text-muted-foreground">
+                                Attendance: {cert.attended ? "Attended" : "Not attended"}
+                              </p>
+                            </div>
+                            <div className="rounded-full px-3 py-1 text-xs font-medium bg-blue-100 text-blue-700">
+                              {new Date(cert.certificateRequestedAt).toLocaleDateString("en-GB", {
+                                day: "numeric",
+                                month: "short",
+                                year: "numeric",
+                              })}
+                            </div>
+                          </div>
+
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            {!cert.certificateFileUrl && (
+                              <>
+                                <input
+                                  type="file"
+                                  accept="application/pdf"
+                                  id={`cert-upload-${cert.id}`}
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) {
+                                      handleUploadCertificate(event.id, cert.id, file);
+                                      // Reset input
+                                      e.target.value = "";
+                                    }
+                                  }}
+                                  disabled={isUploading}
+                                  className="hidden"
+                                />
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() =>
+                                    document
+                                      .getElementById(`cert-upload-${cert.id}`)
+                                      ?.click()
+                                  }
+                                  disabled={isUploading}
+                                >
+                                  {isUploading ? "Uploading..." : "Upload Certificate"}
+                                </Button>
+                              </>
+                            )}
+
+                            <Button
+                              size="sm"
+                              onClick={() => handleApproveCertificate(event.id, cert.id)}
+                              disabled={!cert.certificateFileUrl || isApproving}
+                            >
+                              {isApproving ? "Approving..." : "Approve"}
+                            </Button>
+
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => handleRejectCertificate(event.id, cert.id)}
+                              disabled={isRejecting}
+                            >
+                              {isRejecting ? "Rejecting..." : "Reject"}
+                            </Button>
+
+                            {cert.certificateFileUrl && (
+                              <span className="flex items-center text-xs text-green-600">
+                                ✓ File uploaded
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        </SectionCard>
+      )}
+
       <SectionCard
         title="Event reports"
         description="Any society member can create/update the post-event report for an event."
       >
-        {message && (
-          <div className="rounded-2xl border border-green-500/50 bg-green-50 px-4 py-3 text-sm text-green-700">
-            {message}
-          </div>
-        )}
-
-        {error && (
-          <div className="rounded-2xl border border-red-500/50 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
-          </div>
-        )}
-
         {loading ? (
           <p className="text-sm text-muted-foreground">Loading events and reports...</p>
         ) : sortedEvents.length === 0 ? (

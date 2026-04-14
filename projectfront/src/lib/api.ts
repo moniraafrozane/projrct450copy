@@ -103,6 +103,12 @@ export interface EventRegistration {
   registrationDate: string;
   status: 'confirmed' | 'waitlisted' | 'cancelled';
   paymentStatus: 'pending' | 'paid' | 'refunded';
+  attended: boolean;
+  attendedAt?: string | null;
+  certificateRequestStatus: 'not_requested' | 'pending' | 'approved' | 'rejected';
+  certificateRequestedAt?: string | null;
+  certificateApprovedAt?: string | null;
+  certificateFileUrl?: string | null;
   remarks?: string;
   event?: Event;
 }
@@ -112,6 +118,8 @@ export type RegistrationLogEventType =
   | 'under_review'
   | 'approved'
   | 'rejected'
+  | 'attendance_marked'
+  | 'certificate_requested'
   | 'comment_added'
   | 'certificate_uploaded'
   | 'certificate_ready'
@@ -141,6 +149,18 @@ export interface RegistrationLogSummary {
   submittedAt: string;
   status: 'confirmed' | 'waitlisted' | 'cancelled';
   paymentStatus: 'pending' | 'paid' | 'refunded';
+  attended: boolean;
+  attendedAt?: string | null;
+  certificateRequestStatus: 'not_requested' | 'pending' | 'approved' | 'rejected';
+  certificateRequestedAt?: string | null;
+  registered: boolean;
+  registrationDateTime: string;
+  certificateIssueTime?: string | null;
+  attendanceStatus: 'Attended' | 'Absent';
+  participationType: 'Team' | 'Solo';
+  position?: string | null;
+  scoreOrMarks?: string | null;
+  performanceRemarks?: string | null;
 }
 
 export interface RegistrationLogResponse {
@@ -155,7 +175,7 @@ export interface EventsResponse {
   pagination?: {
     total: number;
     page: number;
-    limit: number;
+    limit: number | null;
     pages: number;
   };
 }
@@ -250,9 +270,27 @@ export const eventAPI = {
     return response.data;
   },
 
+  applyForCertificate: async (
+    eventId: string,
+    registrationId: string
+  ): Promise<{ success: boolean; message: string; registration: EventRegistration }> => {
+    const response = await api.post(`/events/${eventId}/registrations/${registrationId}/certificate-request`, {});
+    return response.data;
+  },
+
   // Get user's created events (protected - society/admin)
   getMyEvents: async (): Promise<EventsResponse> => {
     const response = await api.get('/events/my/events');
+    return response.data;
+  },
+
+  // Get all society-created events (protected)
+  getSocietyEvents: async (params?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+  }): Promise<EventsResponse> => {
+    const response = await api.get('/events/society/all', { params });
     return response.data;
   },
 
@@ -278,6 +316,130 @@ export const eventAPI = {
   getEventStats: async (eventId: string): Promise<ApiResponse> => {
     const response = await api.get(`/events/${eventId}/stats`);
     return response.data;
+  },
+};
+
+// ─── Analytics Reports API ─────────────────────────────────────────
+export type AnalyticsMetricKey =
+  | 'total_events_per_year'
+  | 'total_budget_per_year'
+  | 'average_budget_per_event'
+  | 'total_student_participations';
+
+export interface AnalyticsMetricDefinition {
+  key: AnalyticsMetricKey;
+  label: string;
+  description: string;
+  format: 'number' | 'currency';
+}
+
+export interface AnalyticsReportMetric {
+  key: AnalyticsMetricKey;
+  label: string;
+  description: string;
+  format: 'number' | 'currency';
+  value: number;
+  autoValue: number;
+  source: 'auto' | 'manual';
+}
+
+export interface AnalyticsReport {
+  id: string;
+  title: string;
+  reportYear: number;
+  notes?: string | null;
+  metricKeys: AnalyticsMetricKey[];
+  metricValues: AnalyticsReportMetric[];
+  filters?: { year?: number } | null;
+  createdById: string;
+  createdByName: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AnalyticsReportOptionsResponse {
+  success: boolean;
+  metrics: AnalyticsMetricDefinition[];
+  defaultYear: number;
+}
+
+export interface AnalyticsReportListResponse {
+  success: boolean;
+  reports: AnalyticsReport[];
+}
+
+export interface MonthlyBudgetEvent {
+  name: string;
+  date: string;
+  budget: number;
+}
+
+export interface MonthlyBudgetEventsResponse {
+  success: boolean;
+  events: MonthlyBudgetEvent[];
+  totalBudget: number;
+  eventCount: number;
+}
+
+export interface AnalyticsReportResponse {
+  success: boolean;
+  report: AnalyticsReport;
+}
+
+export interface CreateAnalyticsReportPayload {
+  title: string;
+  year: number;
+  notes?: string;
+  metricKeys: AnalyticsMetricKey[];
+  metricValues?: Partial<Record<AnalyticsMetricKey, number | string | null | undefined>>;
+}
+
+export const analyticsReportAPI = {
+  getMetricOptions: async (): Promise<AnalyticsReportOptionsResponse> => {
+    const response = await api.get('/admin/reports/options');
+    return response.data;
+  },
+
+  getReports: async (): Promise<AnalyticsReportListResponse> => {
+    const response = await api.get('/admin/reports');
+    return response.data;
+  },
+
+  getMonthlyBudgetEvents: async (): Promise<MonthlyBudgetEventsResponse> => {
+    const response = await api.get('/admin/reports/monthly-budget');
+    return response.data;
+  },
+
+  getReport: async (reportId: string): Promise<AnalyticsReportResponse> => {
+    const response = await api.get(`/admin/reports/${reportId}`);
+    return response.data;
+  },
+
+  createReport: async (payload: CreateAnalyticsReportPayload): Promise<AnalyticsReportResponse> => {
+    const response = await api.post('/admin/reports', payload);
+    return response.data;
+  },
+
+  downloadReport: async (reportId: string, format: 'pdf' | 'xlsx' = 'pdf'): Promise<void> => {
+    const response = await api.get(`/admin/reports/${reportId}/export`, {
+      params: { format },
+      responseType: 'blob',
+    });
+
+    const blob = new Blob([response.data], {
+      type:
+        format === 'xlsx'
+          ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          : 'application/pdf',
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `analytics-report-${reportId}.${format}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   },
 };
 
@@ -1069,5 +1231,59 @@ export const postEventAPI = {
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
+  },
+};
+
+// ─── Admin Audit Log API ───────────────────────────────────────────
+
+export interface AdminAuditLog {
+  id: string;
+  action: string;
+  module: string;
+  description: string;
+  actorId: string;
+  actorEmail: string;
+  actorName?: string | null;
+  actorRole: string;
+  resourceId?: string | null;
+  resourceType?: string | null;
+  resourceName?: string | null;
+  previousValue?: any;
+  newValue?: any;
+  metadata?: any;
+  ipAddress?: string | null;
+  createdAt: string;
+}
+
+export const auditLogAPI = {
+  getAuditLogs: async (params?: {
+    module?: string;
+    action?: string;
+    resourceType?: string;
+    actorId?: string;
+    startDate?: string;
+    endDate?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{
+    success: boolean;
+    logs: AdminAuditLog[];
+    pagination: {
+      total: number;
+      page: number;
+      limit: number;
+      pages: number;
+    };
+  }> => {
+    const response = await api.get('/admin/audit-logs', { params });
+    return response.data;
+  },
+
+  getResourceAuditTrail: async (
+    resourceType: string,
+    resourceId: string
+  ): Promise<{ success: boolean; logs: AdminAuditLog[] }> => {
+    const response = await api.get(`/admin/audit-logs/${resourceType}/${resourceId}`);
+    return response.data;
   },
 };

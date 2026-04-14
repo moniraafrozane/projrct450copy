@@ -121,10 +121,10 @@ export default function SocietyEventPlannerPage() {
       const isCreated = response?.data?.success || response?.status === 201;
 
       if (isCreated) {
-        setSuccess("event created successfully");
+        setSuccess("Event created successfully");
         setTimeout(() => {
           router.push('/society');
-        }, 2000);
+        }, 3000);
       }
     } catch (err: any) {
       setError(err.response?.data?.message || "Failed to create event. Please try again.");

@@ -48,17 +48,24 @@ export function PageHeader({
         {actions?.length ? (
           <div className="flex flex-wrap gap-3">
             {actions.map((action) => (
-              <Button
-                key={action.label}
-                asChild={Boolean(action.href)}
-                variant={action.variant ?? "default"}
-              >
-                {action.href ? (
+              action.href ? (
+                <Button
+                  key={action.label}
+                  asChild
+                  variant={action.variant ?? "default"}
+                >
                   <a href={action.href}>{action.label}</a>
-                ) : (
-                  <span>{action.label}</span>
-                )}
-              </Button>
+                </Button>
+              ) : (
+                <Button
+                  key={action.label}
+                  type="button"
+                  variant={action.variant ?? "default"}
+                  onClick={action.onClick}
+                >
+                  {action.label}
+                </Button>
+              )
             ))}
           </div>
         ) : null}

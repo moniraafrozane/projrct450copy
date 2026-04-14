@@ -1,4 +1,5 @@
 const prisma = require('../config/prisma');
+const { createAuditLog } = require('./auditLogController');
 
 // Helper function to calculate actual event status based on date/time
 const calculateEventStatus = (event) => {
@@ -22,6 +23,388 @@ const calculateEventStatus = (event) => {
     return 'ongoing';
   } else {
     return 'completed';
+  }
+};
+
+// Get all pending certificate applications for an event
+exports.getPendingCertificates = async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    const userId = req.user.id;
+
+    // Check if event exists and user is authorized to manage it
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: { id: true, title: true, organizerId: true }
+    });
+
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: 'Event not found'
+      });
+    }
+
+    // Allow event organizer or admin to see pending certificates
+    if (event.organizerId !== userId && !req.user.roles?.includes('admin')) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to manage this event'
+      });
+    }
+
+    // Fetch all pending certificate applications
+    const pendingCertificates = await prisma.eventRegistration.findMany({
+      where: {
+        eventId: eventId,
+        certificateRequestStatus: 'pending'
+      },
+      select: {
+        id: true,
+        userId: true,
+        userName: true,
+        userEmail: true,
+        userPhone: true,
+        registrationNumber: true,
+        certificateRequestedAt: true,
+        certificateFileUrl: true,
+        attended: true,
+        event: {
+          select: {
+            id: true,
+            title: true
+          }
+        }
+      },
+      orderBy: { certificateRequestedAt: 'asc' }
+    });
+
+    return res.json({
+      success: true,
+      message: 'Pending certificates fetched successfully',
+      pendingCertificates: pendingCertificates,
+      count: pendingCertificates.length
+    });
+  } catch (error) {
+    console.error('Get pending certificates error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error fetching pending certificates',
+      error: error.message
+    });
+  }
+};
+
+// Upload certificate file for a student
+exports.uploadCertificate = async (req, res) => {
+  try {
+    const { eventId, registrationId } = req.params;
+    const userId = req.user.id;
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No certificate file provided'
+      });
+    }
+
+    // Verify event exists and user is authorized
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: { id: true, organizerId: true }
+    });
+
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: 'Event not found'
+      });
+    }
+
+    if (event.organizerId !== userId && !req.user.roles?.includes('admin')) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to upload certificate for this event'
+      });
+    }
+
+    // Find the registration
+    const registration = await prisma.eventRegistration.findFirst({
+      where: {
+        id: registrationId,
+        eventId: eventId,
+        certificateRequestStatus: 'pending'
+      }
+    });
+
+    if (!registration) {
+      return res.status(404).json({
+        success: false,
+        message: 'Pending certificate application not found'
+      });
+    }
+
+    // Store the file path
+    const fileUrl = `/uploads/certificates/${req.file.filename}`;
+
+    // Update registration with certificate file URL
+    const updated = await prisma.eventRegistration.update({
+      where: { id: registrationId },
+      data: {
+        certificateFileUrl: fileUrl,
+        updatedAt: new Date()
+      }
+    });
+
+    // Log audit trail
+    createAuditLog({
+      action: 'certificate_uploaded',
+      module: 'certificates',
+      description: `Certificate uploaded for student ${registration.userName} in event ${event.title}`,
+      actorId: userId,
+      actorEmail: req.user.email,
+      actorName: req.user.name,
+      actorRole: event.organizerId === userId ? 'society' : 'admin',
+      resourceId: registrationId,
+      resourceType: 'EventRegistration',
+      resourceName: `${registration.userName} - ${event.title}`,
+      metadata: {
+        eventId: eventId,
+        eventTitle: event.title,
+        fileName: req.file.originalname,
+        fileSize: req.file.size
+      }
+    }).catch(err => console.error('Audit log error:', err));
+
+    return res.json({
+      success: true,
+      message: 'Certificate uploaded successfully',
+      registration: updated,
+      fileUrl: fileUrl
+    });
+  } catch (error) {
+    console.error('Upload certificate error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error uploading certificate',
+      error: error.message
+    });
+  }
+};
+
+// Approve certificate and notify student
+exports.approveCertificate = async (req, res) => {
+  try {
+    const { eventId, registrationId } = req.params;
+    const userId = req.user.id;
+
+    // Verify event exists and user is authorized
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: { id: true, title: true, organizerId: true }
+    });
+
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: 'Event not found'
+      });
+    }
+
+    if (event.organizerId !== userId && !req.user.roles?.includes('admin')) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to approve certificates for this event'
+      });
+    }
+
+    // Find the registration
+    const registration = await prisma.eventRegistration.findFirst({
+      where: {
+        id: registrationId,
+        eventId: eventId
+      },
+      include: {
+        event: {
+          select: { title: true }
+        }
+      }
+    });
+
+    if (!registration) {
+      return res.status(404).json({
+        success: false,
+        message: 'Registration not found'
+      });
+    }
+
+    if (registration.certificateRequestStatus !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        message: 'Certificate request is not in pending status'
+      });
+    }
+
+    if (!registration.certificateFileUrl) {
+      return res.status(400).json({
+        success: false,
+        message: 'Certificate file has not been uploaded yet'
+      });
+    }
+
+    const approvedAt = new Date();
+
+    // Update registration status to approved
+    const updated = await prisma.eventRegistration.update({
+      where: { id: registrationId },
+      data: {
+        certificateRequestStatus: 'approved',
+        certificateApprovedAt: approvedAt,
+        updatedAt: approvedAt
+      }
+    });
+
+    // Log the approval event
+    await appendRegistrationLog({
+      registrationId: registration.id,
+      eventType: 'certificate_approved',
+      actorRole: 'society',
+      actorId: userId,
+      actorName: req.user.name,
+      message: 'Certificate approved and forwarded to student',
+      previousStatus: 'pending',
+      nextStatus: 'approved',
+      metadata: {
+        approvedAt: approvedAt.toISOString(),
+        eventId: event.id,
+        eventName: event.title
+      },
+      createdAt: approvedAt
+    });
+
+    // Log audit trail
+    createAuditLog({
+      action: 'certificate_approved',
+      module: 'certificates',
+      description: `Certificate approved for student ${registration.userName} in event ${event.title}`,
+      actorId: userId,
+      actorEmail: req.user.email,
+      actorName: req.user.name,
+      actorRole: event.organizerId === userId ? 'society' : 'admin',
+      resourceId: registrationId,
+      resourceType: 'EventRegistration',
+      resourceName: `${registration.userName} - ${event.title}`,
+      metadata: {
+        eventId: event.id,
+        eventTitle: event.title,
+        studentId: registration.userId,
+        approvedAt: approvedAt.toISOString()
+      }
+    }).catch(err => console.error('Audit log error:', err));
+
+    return res.json({
+      success: true,
+      message: 'Certificate approved and notification sent to student',
+      registration: updated,
+      notificationMessage: `Your certificate for "${event.title}" has been approved. You can now download it from the app.`
+    });
+  } catch (error) {
+    console.error('Approve certificate error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error approving certificate',
+      error: error.message
+    });
+  }
+};
+
+// Reject certificate request
+exports.rejectCertificate = async (req, res) => {
+  try {
+    const { eventId, registrationId } = req.params;
+    const userId = req.user.id;
+
+    // Verify event exists and user is authorized
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: { id: true, title: true, organizerId: true }
+    });
+
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: 'Event not found'
+      });
+    }
+
+    if (event.organizerId !== userId && !req.user.roles?.includes('admin')) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to reject certificates for this event'
+      });
+    }
+
+    const registration = await prisma.eventRegistration.findFirst({
+      where: {
+        id: registrationId,
+        eventId: eventId
+      }
+    });
+
+    if (!registration) {
+      return res.status(404).json({
+        success: false,
+        message: 'Registration not found'
+      });
+    }
+
+    if (registration.certificateRequestStatus !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        message: 'Certificate request is not in pending status'
+      });
+    }
+
+    const updated = await prisma.eventRegistration.update({
+      where: { id: registrationId },
+      data: {
+        certificateRequestStatus: 'rejected',
+        updatedAt: new Date()
+      }
+    });
+
+    // Log audit trail
+    createAuditLog({
+      action: 'certificate_rejected',
+      module: 'certificates',
+      description: `Certificate request rejected for student ${registration.userName} in event ${event.title}`,
+      actorId: userId,
+      actorEmail: req.user.email,
+      actorName: req.user.name,
+      actorRole: event.organizerId === userId ? 'society' : 'admin',
+      resourceId: registrationId,
+      resourceType: 'EventRegistration',
+      resourceName: `${registration.userName} - ${event.title}`,
+      metadata: {
+        eventId: event.id,
+        eventTitle: event.title,
+        studentId: registration.userId,
+        rejectedAt: new Date().toISOString()
+      }
+    }).catch(err => console.error('Audit log error:', err));
+
+    return res.json({
+      success: true,
+      message: 'Certificate request rejected successfully',
+      registration: updated
+    });
+  } catch (error) {
+    console.error('Reject certificate error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error rejecting certificate request',
+      error: error.message
+    });
   }
 };
 
@@ -158,8 +541,11 @@ exports.createEvent = async (req, res) => {
 // Get all events
 exports.getAllEvents = async (req, res) => {
   try {
-    const { status, category, search, upcoming, page = 1, limit = 10 } = req.query;
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const { status, category, search, upcoming, page = 1, limit } = req.query;
+    const parsedPage = parseInt(page, 10) || 1;
+    const parsedLimit = limit ? parseInt(limit, 10) : null;
+    const usePagination = Number.isInteger(parsedLimit) && parsedLimit > 0;
+    const skip = usePagination ? (parsedPage - 1) * parsedLimit : 0;
     const where = { isPublished: true };
 
     // Base filters
@@ -196,16 +582,18 @@ exports.getAllEvents = async (req, res) => {
 
     // Apply pagination
     const total = filteredEvents.length;
-    const paginatedEvents = filteredEvents.slice(skip, skip + parseInt(limit));
+    const paginatedEvents = usePagination
+      ? filteredEvents.slice(skip, skip + parsedLimit)
+      : filteredEvents;
 
     res.json({
       success: true,
       events: paginatedEvents,
       pagination: {
         total,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        pages: Math.ceil(total / parseInt(limit))
+        page: parsedPage,
+        limit: usePagination ? parsedLimit : null,
+        pages: usePagination ? Math.ceil(total / parsedLimit) : 1
       }
     });
   } catch (error) {
@@ -214,6 +602,82 @@ exports.getAllEvents = async (req, res) => {
       success: false,
       message: 'Error fetching events',
       error: error.message
+    });
+  }
+};
+
+// Get all published events created by society members
+exports.getSocietyEvents = async (req, res) => {
+  try {
+    const { page = 1, limit, search } = req.query;
+    const parsedPage = parseInt(page, 10) || 1;
+    const parsedLimit = limit ? parseInt(limit, 10) : null;
+    const usePagination = Number.isInteger(parsedLimit) && parsedLimit > 0;
+    const skip = usePagination ? (parsedPage - 1) * parsedLimit : 0;
+
+    const societyUsers = await prisma.user.findMany({
+      where: { roles: { has: 'society' } },
+      select: { id: true },
+    });
+
+    const societyUserIds = societyUsers.map((user) => user.id);
+    if (!societyUserIds.length) {
+      return res.json({
+        success: true,
+        events: [],
+        pagination: {
+          total: 0,
+          page: parsedPage,
+          limit: usePagination ? parsedLimit : null,
+          pages: 0,
+        },
+      });
+    }
+
+    const where = {
+      isPublished: true,
+      organizerId: { in: societyUserIds },
+      ...(search
+        ? {
+            OR: [
+              { title: { contains: search, mode: 'insensitive' } },
+              { description: { contains: search, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
+
+    const [total, events] = await Promise.all([
+      prisma.event.count({ where }),
+      prisma.event.findMany({
+        where,
+        include: { _count: { select: { registrations: true } } },
+        orderBy: { eventDate: 'desc' },
+        ...(usePagination ? { skip, take: parsedLimit } : {}),
+      }),
+    ]);
+
+    const eventsWithStatus = events.map((event) => ({
+      ...event,
+      status: calculateEventStatus(event),
+    }));
+
+    return res.json({
+      success: true,
+      events: eventsWithStatus,
+      pagination: {
+        total,
+        page: parsedPage,
+        limit: usePagination ? parsedLimit : null,
+        pages: usePagination ? Math.ceil(total / parsedLimit) : 1,
+      },
+    });
+  } catch (error) {
+    console.error('Get society events error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error fetching society events',
+      error: error.message,
     });
   }
 };
@@ -522,8 +986,27 @@ exports.getMyRegistrations = async (req, res) => {
       orderBy: { createdAt: 'desc' }
     });
 
+    const organizerIds = Array.from(
+      new Set(registrations.map((registration) => registration.event?.organizerId).filter(Boolean))
+    );
+
+    const societyOrganizers = organizerIds.length
+      ? await prisma.user.findMany({
+          where: {
+            id: { in: organizerIds },
+            roles: { has: 'society' },
+          },
+          select: { id: true },
+        })
+      : [];
+
+    const societyOrganizerIds = new Set(societyOrganizers.map((user) => user.id));
+    const societyRegistrations = registrations.filter((registration) =>
+      societyOrganizerIds.has(registration.event?.organizerId)
+    );
+
     // Calculate actual status for each event
-    const registrationsWithStatus = registrations.map(registration => ({
+    const registrationsWithStatus = societyRegistrations.map(registration => ({
       ...registration,
       event: {
         ...registration.event,
@@ -574,6 +1057,76 @@ exports.getMyRegistrationLog = async (req, res) => {
       orderBy: { createdAt: 'asc' },
     });
 
+    const latestEventReport = await prisma.eventReport.findFirst({
+      where: { eventId: registration.eventId },
+      orderBy: { createdAt: 'desc' },
+      select: { attendanceRecord: true },
+    });
+
+    const normaliseText = (value) => String(value || '').trim().toLowerCase();
+    const toDisplayString = (value) => {
+      if (value === null || value === undefined) return null;
+      const normalized = String(value).trim();
+      return normalized.length > 0 ? normalized : null;
+    };
+
+    const attendanceRecord =
+      latestEventReport?.attendanceRecord && typeof latestEventReport.attendanceRecord === 'object'
+        ? latestEventReport.attendanceRecord
+        : null;
+
+    const attendeeList = Array.isArray(attendanceRecord?.attendeeList)
+      ? attendanceRecord.attendeeList
+      : [];
+
+    const matchedAttendee = attendeeList.find((attendee) => {
+      if (!attendee || typeof attendee !== 'object') return false;
+
+      const attendeeEmail = normaliseText(attendee.email);
+      const attendeeId = normaliseText(attendee.id);
+      const attendeeName = normaliseText(attendee.name);
+
+      const registrationEmail = normaliseText(registration.userEmail);
+      const registrationNumber = normaliseText(registration.registrationNumber);
+      const registrationName = normaliseText(registration.userName);
+
+      if (attendeeEmail && registrationEmail && attendeeEmail === registrationEmail) return true;
+      if (attendeeId && registrationNumber && attendeeId === registrationNumber) return true;
+      if (attendeeName && registrationName && attendeeName === registrationName) return true;
+      return false;
+    });
+
+    const latestCertificateLog = [...logs]
+      .reverse()
+      .find((log) => ['certificate_ready', 'certificate_uploaded', 'certificate_issued'].includes(log.eventType));
+
+    const position =
+      toDisplayString(matchedAttendee?.position) ||
+      toDisplayString(matchedAttendee?.award) ||
+      toDisplayString(matchedAttendee?.result) ||
+      null;
+
+    const scoreValue =
+      matchedAttendee?.score ??
+      matchedAttendee?.marks ??
+      matchedAttendee?.points ??
+      null;
+
+    const scoreOrMarks = toDisplayString(scoreValue);
+
+    const performanceRemarks =
+      toDisplayString(matchedAttendee?.remarks) ||
+      toDisplayString(registration.remarks) ||
+      null;
+
+    const attendanceStatus =
+      typeof matchedAttendee?.attended === 'boolean'
+        ? (matchedAttendee.attended ? 'Attended' : 'Absent')
+        : (registration.attended ? 'Attended' : 'Absent');
+
+    const participationType = toDisplayString(registration.teamName) ? 'Team' : 'Solo';
+    const isRegistered = registration.status !== 'cancelled';
+
     return res.json({
       success: true,
       registration: {
@@ -583,6 +1136,18 @@ exports.getMyRegistrationLog = async (req, res) => {
         submittedAt: registration.registrationDate,
         status: registration.status,
         paymentStatus: registration.paymentStatus,
+        attended: registration.attended,
+        attendedAt: registration.attendedAt,
+        certificateRequestStatus: registration.certificateRequestStatus,
+        certificateRequestedAt: registration.certificateRequestedAt,
+        registered: isRegistered,
+        registrationDateTime: registration.registrationDate,
+        certificateIssueTime: latestCertificateLog?.createdAt || null,
+        attendanceStatus,
+        participationType,
+        position,
+        scoreOrMarks,
+        performanceRemarks,
       },
       logs,
     });
@@ -591,6 +1156,161 @@ exports.getMyRegistrationLog = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Error fetching registration log',
+      error: error.message,
+    });
+  }
+};
+
+// Admin updates attendance status for a specific registration.
+exports.updateRegistrationAttendance = async (req, res) => {
+  try {
+    const { eventId, registrationId } = req.params;
+    const { attended } = req.body;
+
+    if (!isAdminUser(req.user)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only admins can update attendance',
+      });
+    }
+
+    if (typeof attended !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        message: 'attended must be a boolean value',
+      });
+    }
+
+    const registration = await prisma.eventRegistration.findFirst({
+      where: { id: registrationId, eventId },
+      include: {
+        event: {
+          select: { id: true, title: true },
+        },
+      },
+    });
+
+    if (!registration) {
+      return res.status(404).json({
+        success: false,
+        message: 'Registration not found',
+      });
+    }
+
+    const updated = await prisma.eventRegistration.update({
+      where: { id: registration.id },
+      data: {
+        attended,
+        attendedAt: attended ? new Date() : null,
+      },
+    });
+
+    await appendRegistrationLog({
+      registrationId: registration.id,
+      eventType: 'attendance_marked',
+      actorRole: 'admin',
+      actorId: req.user.id,
+      actorName: req.user.name,
+      message: attended ? 'Attendance marked as attended' : 'Attendance marked as not attended',
+      metadata: {
+        attended,
+        eventId: registration.eventId,
+        eventName: registration.event.title,
+      },
+    });
+
+    return res.json({
+      success: true,
+      message: 'Attendance updated successfully',
+      registration: updated,
+    });
+  } catch (error) {
+    console.error('Update registration attendance error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error updating registration attendance',
+      error: error.message,
+    });
+  }
+};
+
+// Student applies for certificate for an attended event registration.
+exports.applyForCertificate = async (req, res) => {
+  try {
+    const { eventId, registrationId } = req.params;
+    const userId = req.user.id;
+
+    const registration = await prisma.eventRegistration.findFirst({
+      where: { id: registrationId, eventId, userId },
+      include: {
+        event: {
+          select: { id: true, title: true },
+        },
+      },
+    });
+
+    if (!registration) {
+      return res.status(404).json({
+        success: false,
+        message: 'Registration not found',
+      });
+    }
+
+    if (registration.status !== 'confirmed') {
+      return res.status(400).json({
+        success: false,
+        message: 'Certificate can only be requested for approved registrations',
+      });
+    }
+
+    if (registration.certificateRequestStatus === 'pending') {
+      return res.status(409).json({
+        success: false,
+        message: 'Certificate request is already pending',
+      });
+    }
+
+    if (registration.certificateRequestStatus === 'approved') {
+      return res.status(409).json({
+        success: false,
+        message: 'Certificate request has already been approved',
+      });
+    }
+
+    const requestedAt = new Date();
+    const updated = await prisma.eventRegistration.update({
+      where: { id: registration.id },
+      data: {
+        certificateRequestStatus: 'pending',
+        certificateRequestedAt: requestedAt,
+      },
+    });
+
+    await appendRegistrationLog({
+      registrationId: registration.id,
+      eventType: 'certificate_requested',
+      actorRole: 'student',
+      actorId: req.user.id,
+      actorName: req.user.name,
+      message: 'Certificate application submitted',
+      metadata: {
+        requestedAt: requestedAt.toISOString(),
+        eventId: registration.eventId,
+        eventName: registration.event.title,
+      },
+      createdAt: requestedAt,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: 'Certificate application submitted successfully',
+      registration: updated,
+    });
+  } catch (error) {
+    console.error('Apply for certificate error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error applying for certificate',
       error: error.message,
     });
   }

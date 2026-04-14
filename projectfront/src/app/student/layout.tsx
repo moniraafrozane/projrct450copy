@@ -7,7 +7,6 @@ const links = [
   { href: "/student", label: "Dashboard" },
   { href: "/student/applications", label: "Certificates" },
   { href: "/student/profile", label: "Profile" },
-  { href: "/student/receipts", label: "Receipts" },
   { href: "/student/bank-receipt", label: "Bank Upload" },
 ];
 

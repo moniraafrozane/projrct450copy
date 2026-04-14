@@ -1,5 +1,6 @@
 const prisma = require('../config/prisma');
 const jwt = require('jsonwebtoken');
+const { createAuditLog } = require('./auditLogController');
 const { hashPassword, comparePassword } = require('../utils/password');
 
 // Generate JWT Token
@@ -547,6 +548,28 @@ exports.closeUserAccount = async (req, res) => {
         isActive: true,
       },
     });
+
+    // Log audit trail
+    createAuditLog({
+      action: 'user_account_closed',
+      module: 'user_management',
+      description: `User account closed: ${target.name} (${target.email}). Reason: ${reason.trim()}`,
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      actorName: req.user.name,
+      actorRole: 'admin',
+      resourceId: target.id,
+      resourceType: 'User',
+      resourceName: target.name,
+      previousValue: 'active',
+      newValue: 'closed',
+      metadata: {
+        targetUserId: target.id,
+        targetEmail: target.email,
+        closureReason: reason.trim(),
+        closedAt: new Date().toISOString(),
+      }
+    }).catch(err => console.error('Audit log error:', err));
 
     res.status(200).json({
       success: true,

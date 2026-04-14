@@ -9,6 +9,12 @@ import { EventRegistrationModal } from "@/components/ui/event-registration-modal
 import api, { Event, eventAPI } from "@/lib/api";
 import { demoUpcomingEvents } from "@/data/events";
 
+type PastEventStatusItem = {
+  event: Event;
+  isRegistered: boolean;
+  attendanceStatus: "Attended" | "Not attended" | "N/A";
+};
+
 const CATEGORY_ALIAS_MAP: Record<string, string[]> = {
   Tech: ["tech", "technical", "technology"],
   Culture: ["culture", "cultural"],
@@ -35,6 +41,10 @@ export default function StudentDashboardPage() {
   const [marketplaceEvents, setMarketplaceEvents] = useState<Event[]>([]);
   const [marketplaceLoading, setMarketplaceLoading] = useState(true);
   const [marketplaceError, setMarketplaceError] = useState("");
+  const [pastEventStatuses, setPastEventStatuses] = useState<PastEventStatusItem[]>([]);
+  const [pastEventsLoading, setPastEventsLoading] = useState(true);
+  const [pastEventsError, setPastEventsError] = useState("");
+  const [selectedPastFilter, setSelectedPastFilter] = useState("All");
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [loadingEventId, setLoadingEventId] = useState<string | null>(null);
@@ -123,6 +133,59 @@ export default function StudentDashboardPage() {
     fetchMarketplaceEvents();
   }, [selectedCategory, searchQuery]);
 
+  useEffect(() => {
+    const fetchPastEventStatuses = async () => {
+      try {
+        setPastEventsLoading(true);
+        setPastEventsError("");
+
+        const [completedEventsRes, registrationsRes] = await Promise.all([
+          eventAPI.getAllEvents({ status: "completed" }),
+          eventAPI.getMyRegistrations(),
+        ]);
+
+        const completedEvents = Array.isArray(completedEventsRes.events)
+          ? completedEventsRes.events
+          : [];
+
+        const registrations = Array.isArray(registrationsRes.registrations)
+          ? registrationsRes.registrations
+          : [];
+
+        const registrationLookup = new Map(
+          registrations
+            .filter((registration) => !!registration?.eventId)
+            .map((registration) => [registration.eventId, registration])
+        );
+
+        const joinedStatuses: PastEventStatusItem[] = completedEvents.map((event) => {
+          const registration = registrationLookup.get(event.id);
+          const isRegistered = !!registration;
+
+          let attendanceStatus: "Attended" | "Not attended" | "N/A" = "N/A";
+          if (isRegistered) {
+            attendanceStatus = registration.attended ? "Attended" : "Not attended";
+          }
+
+          return {
+            event,
+            isRegistered,
+            attendanceStatus,
+          };
+        });
+
+        setPastEventStatuses(joinedStatuses);
+      } catch (error: any) {
+        setPastEventsError(error.response?.data?.message || "Failed to load past events");
+        setPastEventStatuses([]);
+      } finally {
+        setPastEventsLoading(false);
+      }
+    };
+
+    fetchPastEventStatuses();
+  }, []);
+
   const handleRegisterEvent = (event: Event) => {
     setSelectedEvent(event);
   };
@@ -179,6 +242,17 @@ export default function StudentDashboardPage() {
   };
 
   const categories = ["All", "Tech", "Culture", "Community", "Sports", "Workshop", "Seminar"];
+  const pastEventFilters = ["All", "Registered", "Not registered", "Attended", "Not attended"];
+
+  const filteredPastEventStatuses = pastEventStatuses.filter((item) => {
+    if (selectedPastFilter === "All") return true;
+    if (selectedPastFilter === "Registered") return item.isRegistered;
+    if (selectedPastFilter === "Not registered") return !item.isRegistered;
+    if (selectedPastFilter === "Attended") return item.attendanceStatus === "Attended";
+    if (selectedPastFilter === "Not attended") return item.attendanceStatus === "Not attended";
+    if (selectedPastFilter === "N/A") return item.attendanceStatus === "N/A";
+    return true;
+  });
 
   return (
     <div className="space-y-10">
@@ -266,40 +340,72 @@ export default function StudentDashboardPage() {
       </SectionCard>
 
       <SectionCard
-        title="Your upcoming events"
-        description="Browse events, apply, and follow progress in one place."
+        title="Past events history"
+        description="See completed events and your registration and attendance status."
       >
-        <div className="grid gap-4">
-          {upcomingEvents.map((event) => (
-            <div
-              key={event.id}
-              className="flex flex-col gap-4 rounded-2xl border border-border/70 p-4 md:flex-row md:items-center md:justify-between"
+        <div className="mb-6 flex flex-wrap gap-3">
+          {pastEventFilters.map((filter) => (
+            <button
+              key={filter}
+              onClick={() => setSelectedPastFilter(filter)}
+              className={`rounded-full border px-5 py-2 text-sm font-medium transition-colors ${
+                selectedPastFilter === filter
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border/70 bg-white text-foreground hover:bg-muted"
+              }`}
             >
-              <div>
-                <p className="text-base font-semibold text-foreground">{event.title}</p>
-                <p className="text-xl text-muted-foreground">{formatDate(event.eventDate)}</p>
-                <p className="text-lg text-muted-foreground">{event.eventType}</p>
-                <p className="text-base text-muted-foreground/80">
-                  {event.registrationDeadline
-                    ? `Register by ${formatDate(event.registrationDeadline)}`
-                    : "Registration deadline TBA"}
-                </p>
-              </div>
-              <div className="flex flex-col gap-3 md:flex-row md:items-center">
-                <Badge variant={event.status === "upcoming" ? "success" : "outline"}>
-                  {event.status}
-                </Badge>
-                <Button 
-                  variant="outline"
-                  onClick={() => handleRegisterEvent(event)}
-                  disabled={loadingEventId === event.id}
-                >
-                  {loadingEventId === event.id ? "Registering..." : "Register Now"}
-                </Button>
-              </div>
-            </div>
+              {filter}
+            </button>
           ))}
         </div>
+
+        {pastEventsError && (
+          <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+            {pastEventsError}
+          </div>
+        )}
+
+        {pastEventsLoading ? (
+          <div className="py-12 text-center text-muted-foreground">Loading past events...</div>
+        ) : filteredPastEventStatuses.length === 0 ? (
+          <div className="py-12 text-center text-muted-foreground">No completed events found yet.</div>
+        ) : (
+          <div className="grid gap-4">
+            {filteredPastEventStatuses.map(({ event, isRegistered, attendanceStatus }) => {
+              const registrationBadge = isRegistered
+                ? { label: "Registered", variant: "success" as const }
+                : { label: "Not registered", variant: "outline" as const };
+
+              const attendanceBadge =
+                attendanceStatus === "Attended"
+                  ? { label: "Attended", variant: "success" as const }
+                  : attendanceStatus === "Not attended"
+                  ? { label: "Not attended", variant: "warning" as const }
+                  : null;
+
+              return (
+                <div
+                  key={event.id}
+                  className="flex flex-col gap-4 rounded-2xl border border-border/70 p-4 md:flex-row md:items-center md:justify-between"
+                >
+                  <div className="space-y-1">
+                    <p className="text-base font-semibold text-foreground">{event.title}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {formatDate(event.eventDate)} • {event.startTime} - {event.endTime}
+                    </p>
+                    <p className="text-sm text-muted-foreground">{event.venue}</p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={registrationBadge.variant}>{registrationBadge.label}</Badge>
+                    {attendanceBadge && (
+                      <Badge variant={attendanceBadge.variant}>{attendanceBadge.label}</Badge>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </SectionCard>
 
       {selectedEvent && (
