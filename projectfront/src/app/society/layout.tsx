@@ -10,7 +10,6 @@ const links = [
   { href: "/society/budgets", label: "Budgets" },
   { href: "/society/vouchers", label: "Vouchers" },
   { href: "/society/post-event", label: "Post-event" },
-  { href: "/society/resources", label: "Resources" },
 ];
 
 export const metadata: Metadata = {
