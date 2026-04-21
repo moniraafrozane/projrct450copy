@@ -60,6 +60,37 @@ export interface ApiError {
   error?: string;
 }
 
+export type NotificationType = 'event_created' | 'event_updated' | 'receipt_accepted';
+
+export interface NotificationItem {
+  id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  isRead: boolean;
+  readAt?: string | null;
+  createdAt: string;
+  eventId?: string | null;
+  eventTitle?: string | null;
+  actorName?: string | null;
+  actorSocietyName?: string | null;
+}
+
+export interface NotificationsResponse {
+  success: boolean;
+  notifications: NotificationItem[];
+}
+
+export interface NotificationCountResponse {
+  success: boolean;
+  unreadCount: number;
+}
+
+export interface NotificationSingleResponse {
+  success: boolean;
+  notification: NotificationItem;
+}
+
 // Event-related types
 export interface Event {
   id: string;
@@ -315,6 +346,31 @@ export const eventAPI = {
   // Get event statistics (protected - organizer/admin)
   getEventStats: async (eventId: string): Promise<ApiResponse> => {
     const response = await api.get(`/events/${eventId}/stats`);
+    return response.data;
+  },
+};
+
+export const notificationAPI = {
+  getMyNotifications: async (params?: {
+    unreadOnly?: boolean;
+    limit?: number;
+  }): Promise<NotificationsResponse> => {
+    const response = await api.get('/notifications', { params });
+    return response.data;
+  },
+
+  getUnreadCount: async (): Promise<NotificationCountResponse> => {
+    const response = await api.get('/notifications/unread-count');
+    return response.data;
+  },
+
+  markAsRead: async (notificationId: string): Promise<NotificationSingleResponse> => {
+    const response = await api.patch(`/notifications/${notificationId}/read`);
+    return response.data;
+  },
+
+  markAllAsRead: async (): Promise<ApiResponse & { updatedCount?: number }> => {
+    const response = await api.patch('/notifications/read-all');
     return response.data;
   },
 };
