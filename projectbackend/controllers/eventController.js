@@ -460,6 +460,55 @@ const appendRegistrationLog = async ({
   });
 };
 
+const buildEventNotificationContent = ({ event, type, actor }) => {
+  if (type === 'event_updated') {
+    return {
+      title: 'Event updated',
+      message: `${actor.name || 'A user'} updated the event "${event.title}".`,
+    };
+  }
+
+  return {
+    title: 'New event published',
+    message: `${actor.name || 'A user'} created a new event "${event.title}".`,
+  };
+};
+
+const notifyStudentsForEventAction = async ({ event, type, actor }) => {
+  if (!event?.id || !event?.title || !actor?.id) {
+    return;
+  }
+
+  const recipients = await prisma.user.findMany({
+    where: {
+      isActive: true,
+      roles: { has: 'student' },
+    },
+    select: { id: true },
+  });
+
+  if (!recipients.length) {
+    return;
+  }
+
+  const { title, message } = buildEventNotificationContent({ event, type, actor });
+
+  await prisma.notification.createMany({
+    data: recipients.map((recipient) => ({
+      recipientId: recipient.id,
+      actorId: actor.id,
+      eventId: event.id,
+      type,
+      title,
+      message,
+      metadata: {
+        eventTitle: event.title,
+        organizerName: event.organizerName || actor.societyName || actor.name || null,
+      },
+    })),
+  });
+};
+
 // Create a new event
 exports.createEvent = async (req, res) => {
   try {
@@ -522,6 +571,12 @@ exports.createEvent = async (req, res) => {
         bannerImage
       }
     });
+
+    notifyStudentsForEventAction({
+      event,
+      type: 'event_created',
+      actor: req.user,
+    }).catch((err) => console.error('Notification write error:', err));
 
     res.status(201).json({
       success: true,
@@ -801,6 +856,12 @@ exports.updateEvent = async (req, res) => {
     }
 
     const updatedEvent = await prisma.event.update({ where: { id }, data: updateData });
+
+    notifyStudentsForEventAction({
+      event: updatedEvent,
+      type: 'event_updated',
+      actor: req.user,
+    }).catch((err) => console.error('Notification write error:', err));
 
     res.json({
       success: true,
