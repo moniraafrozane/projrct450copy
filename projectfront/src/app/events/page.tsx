@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { SectionCard } from "@/components/patterns/section-card";
 import { Card } from "@/components/ui/card";
@@ -69,8 +70,9 @@ export default function PublicEventsPage() {
           ongoing: ongoingRes.data?.events || [],
           completed: completedRes.data?.events || [],
         });
-      } catch (err: any) {
-        setError(err.response?.data?.message || "Failed to load events");
+      } catch (err: unknown) {
+        const maybeAxiosError = err as { response?: { data?: { message?: string } } };
+        setError(maybeAxiosError.response?.data?.message || "Failed to load events");
         setEventsByStatus(EMPTY_BUCKETS);
       } finally {
         setLoading(false);
@@ -112,45 +114,47 @@ export default function PublicEventsPage() {
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {events.map((event) => (
-              <Card key={event.id} className="overflow-hidden transition-all hover:shadow-lg">
-                {event.bannerImage ? (
-                  <div className="relative h-48 w-full overflow-hidden bg-linear-to-br from-primary/20 to-primary/5">
-                    <img
-                      src={event.bannerImage}
-                      alt={event.title}
-                      className="h-full w-full object-cover"
-                      onError={(e) => {
-                        e.currentTarget.style.display = "none";
-                      }}
-                    />
-                  </div>
-                ) : (
-                  <div className="flex h-48 w-full items-center justify-center bg-linear-to-br from-primary/20 to-primary/5">
-                    <span className="text-4xl">.</span>
-                  </div>
-                )}
+              <Link key={event.id} href={`/events/${event.id}`} className="block">
+                <Card className="overflow-hidden transition-all hover:shadow-lg">
+                  {event.bannerImage ? (
+                    <div className="relative h-48 w-full overflow-hidden bg-linear-to-br from-primary/20 to-primary/5">
+                      <img
+                        src={event.bannerImage}
+                        alt={event.title}
+                        className="h-full w-full object-cover"
+                        onError={(e) => {
+                          e.currentTarget.style.display = "none";
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex h-48 w-full items-center justify-center bg-linear-to-br from-primary/20 to-primary/5">
+                      <span className="text-4xl">.</span>
+                    </div>
+                  )}
 
-                <div className="space-y-3 p-6">
-                  <div className="flex items-start justify-between gap-2">
-                    <h3 className="line-clamp-2 text-lg font-semibold">{event.title}</h3>
-                    <Badge variant={badgeVariantForStatus(status)}>
-                      {status === "completed" ? "past" : status}
-                    </Badge>
-                  </div>
+                  <div className="space-y-3 p-6">
+                    <div className="flex items-start justify-between gap-2">
+                      <h3 className="line-clamp-2 text-lg font-semibold">{event.title}</h3>
+                      <Badge variant={badgeVariantForStatus(status)}>
+                        {status === "completed" ? "past" : status}
+                      </Badge>
+                    </div>
 
-                  <p className="line-clamp-2 text-sm text-muted-foreground">{event.description}</p>
+                    <p className="line-clamp-2 text-sm text-muted-foreground">{event.description}</p>
 
-                  <div className="flex items-center justify-between text-sm text-muted-foreground">
-                    <span>{formatDate(event.eventDate)}</span>
-                    <span>{event.venue}</span>
-                  </div>
+                    <div className="flex items-center justify-between text-sm text-muted-foreground">
+                      <span>{formatDate(event.eventDate)}</span>
+                      <span>{event.venue}</span>
+                    </div>
 
-                  <div className="flex items-center justify-between text-sm text-muted-foreground">
-                    <span>{event.startTime} - {event.endTime}</span>
-                    {event._count ? <span>{event._count.registrations} registered</span> : null}
+                    <div className="flex items-center justify-between text-sm text-muted-foreground">
+                      <span>{event.startTime} - {event.endTime}</span>
+                      {event._count ? <span>{event._count.registrations} registered</span> : null}
+                    </div>
                   </div>
-                </div>
-              </Card>
+                </Card>
+              </Link>
             ))}
           </div>
         )}
