@@ -12,12 +12,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [showSplash, setShowSplash] = useState(isHome);
 
   useEffect(() => {
-    if (isHome) {
-      setShowSplash(true);
-      const timeout = setTimeout(() => setShowSplash(false), 1500);
-      return () => clearTimeout(timeout);
-    }
-    setShowSplash(false);
+    if (!isHome) return;
+    const timeout = setTimeout(() => setShowSplash(false), 1500);
+    return () => clearTimeout(timeout);
   }, [isHome]);
 
   const splashScreen = (
@@ -36,7 +33,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <>
-      {isHome && <SiteHeader />}
+      <SiteHeader />
       {children}
       <SiteFooter />
     </>
