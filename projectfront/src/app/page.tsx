@@ -216,52 +216,54 @@ export default function Home() {
   };
 
   const EventCard = ({ event }: { event: Event }) => (
-    <Card className="overflow-hidden transition-all hover:shadow-lg">
-      {event.bannerImage && (
-        <div className="relative h-48 w-full overflow-hidden bg-gradient-to-br from-primary/20 to-primary/5">
-          <img
-            src={event.bannerImage} 
-            alt={event.title}
-            className="h-full w-full object-cover"
-            onError={(e) => {
-              e.currentTarget.style.display = 'none';
-            }}
-          />
+    <Link href={`/events/${event.id}`} className="block">
+      <Card className="overflow-hidden transition-all hover:shadow-lg">
+        {event.bannerImage && (
+          <div className="relative h-48 w-full overflow-hidden bg-gradient-to-br from-primary/20 to-primary/5">
+            <img
+              src={event.bannerImage}
+              alt={event.title}
+              className="h-full w-full object-cover"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
+            />
+          </div>
+        )}
+        {!event.bannerImage && (
+          <div className="h-48 w-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
+            <span className="text-4xl">.</span>
+          </div>
+        )}
+        <div className="p-6 space-y-3">
+          <div className="flex items-start justify-between gap-2">
+            <h3 className="font-semibold text-lg line-clamp-2">{event.title}</h3>
+            <Badge variant={
+              event.status === 'upcoming' ? 'default' :
+              event.status === 'ongoing' ? 'accent' :
+              'outline'
+            }>
+              {event.status}
+            </Badge>
+          </div>
+          <p className="text-sm text-muted-foreground line-clamp-2">
+            {event.description}
+          </p>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground"> {formatDate(event.eventDate)}</span>
+            <span className="text-muted-foreground"> {event.venue}</span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">⏰ {event.startTime} - {event.endTime}</span>
+            {event._count && (
+              <span className="text-muted-foreground">
+                👥 {event._count.registrations} registered
+              </span>
+            )}
+          </div>
         </div>
-      )}
-      {!event.bannerImage && (
-        <div className="h-48 w-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
-          <span className="text-4xl">.</span>
-        </div>
-      )}
-      <div className="p-6 space-y-3">
-        <div className="flex items-start justify-between gap-2">
-          <h3 className="font-semibold text-lg line-clamp-2">{event.title}</h3>
-          <Badge variant={
-            event.status === 'upcoming' ? 'default' : 
-            event.status === 'ongoing' ? 'accent' : 
-            'outline'
-          }>
-            {event.status}
-          </Badge>
-        </div>
-        <p className="text-sm text-muted-foreground line-clamp-2">
-          {event.description}
-        </p>
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground"> {formatDate(event.eventDate)}</span>
-          <span className="text-muted-foreground"> {event.venue}</span>
-        </div>
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">⏰ {event.startTime} - {event.endTime}</span>
-          {event._count && (
-            <span className="text-muted-foreground">
-              👥 {event._count.registrations} registered
-            </span>
-          )}
-        </div>
-      </div>
-    </Card>
+      </Card>
+    </Link>
   );
 
   return (
@@ -283,7 +285,7 @@ export default function Home() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-3xl font-bold"> Upcoming Events</h2>
-            <p className="text-muted-foreground">Don't miss out on these exciting events!</p>
+            <p className="text-muted-foreground">Don&apos;t miss out on these exciting events!</p>
           </div>
           <Button asChild variant="outline">
             <Link href="/events?status=upcoming">View All</Link>
@@ -343,7 +345,7 @@ export default function Home() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-3xl font-bold"> Past Events</h2>
-            <p className="text-muted-foreground">Check out what we've accomplished!</p>
+            <p className="text-muted-foreground">Check out what we&apos;ve accomplished!</p>
           </div>
           <Button asChild variant="outline">
             <Link href="/events?status=completed">View All</Link>
