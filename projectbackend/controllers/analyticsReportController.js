@@ -58,6 +58,24 @@ function sumNonRejectedVoucherAmount(vouchers = []) {
     .reduce((sum, voucher) => sum + Number(voucher.amount || 0), 0);
 }
 
+function parsePositiveNumber(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null;
+  }
+
+  return parsed;
+}
+
+function getBudgetBreakdownTotal(application) {
+  const content = application?.content;
+  if (!content || typeof content !== 'object') {
+    return null;
+  }
+
+  return parsePositiveNumber(content.totalAmount);
+}
+
 function sanitizeFilename(value) {
   return String(value || 'analytics-report')
     .replace(/[^a-z0-9\s-]/gi, '')
@@ -167,14 +185,16 @@ function buildMetricPayload(selectedMetrics, computedValues, manualValues = {}) 
   });
 }
 
-function serializePastEventBudget(event) {
+function serializePastEventBudget(event, budgetApplicationByEventId) {
   const approvedBudget = sumApprovedVoucherAmount(event.vouchers);
   const fallbackBudget = sumNonRejectedVoucherAmount(event.vouchers);
+  const budgetFromVouchers = parsePositiveNumber(approvedBudget) || parsePositiveNumber(fallbackBudget);
+  const budgetBreakdown = getBudgetBreakdownTotal(budgetApplicationByEventId.get(event.id));
 
   return {
     name: event.title,
     date: event.eventDate,
-    budget: approvedBudget > 0 ? approvedBudget : fallbackBudget,
+    budget: budgetFromVouchers || budgetBreakdown || 0,
   };
 }
 
@@ -306,6 +326,7 @@ exports.getMonthlyBudgetEvents = async (req, res) => {
         eventDate: { lt: startOfToday },
       },
       select: {
+        id: true,
         title: true,
         eventDate: true,
         vouchers: {
@@ -318,7 +339,38 @@ exports.getMonthlyBudgetEvents = async (req, res) => {
       orderBy: { eventDate: 'asc' },
     });
 
-    const pastEvents = events.map(serializePastEventBudget);
+    const eventIds = events.map((event) => event.id);
+    let budgetApplications = [];
+
+    if (eventIds.length) {
+      budgetApplications = await prisma.societyApplication.findMany({
+        where: {
+          type: 'budget_breakdown',
+          OR: eventIds.map((eventId) => ({
+            content: {
+              path: ['eventId'],
+              equals: eventId,
+            },
+          })),
+        },
+        select: {
+          content: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+    }
+
+    const budgetApplicationByEventId = new Map();
+    budgetApplications.forEach((application) => {
+      const content = application?.content;
+      const eventId = content && typeof content === 'object' ? content.eventId : null;
+      if (typeof eventId === 'string' && !budgetApplicationByEventId.has(eventId)) {
+        budgetApplicationByEventId.set(eventId, application);
+      }
+    });
+
+    const pastEvents = events.map((event) => serializePastEventBudget(event, budgetApplicationByEventId));
     const totalBudget = pastEvents.reduce((sum, event) => sum + Number(event.budget || 0), 0);
 
     return res.json({
