@@ -78,6 +78,15 @@ export default function CommitteePage() {
   const [newTermEnd, setNewTermEnd] = useState("");
   const [creating, setCreating] = useState(false);
 
+  // Edit committee dialog
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [editingCommittee, setEditingCommittee] = useState<Committee | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editTermStart, setEditTermStart] = useState("");
+  const [editTermEnd, setEditTermEnd] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [deletingCommitteeId, setDeletingCommitteeId] = useState<string | null>(null);
+
   // Add member dialog
   const [showAddMember, setShowAddMember] = useState(false);
   const [users, setUsers] = useState<UserItem[]>([]);
@@ -132,6 +141,16 @@ export default function CommitteePage() {
 
   const handleCreateCommittee = async () => {
     if (!newName.trim() || !newTermStart || !newTermEnd) return;
+
+    if (
+      activeCommittee &&
+      !window.confirm(
+        "Creating a new committee will end the current active term. Do you want to continue?"
+      )
+    ) {
+      return;
+    }
+
     setCreating(true);
     setError("");
     try {
@@ -149,10 +168,77 @@ export default function CommitteePage() {
       } else {
         setError(res.message || "Failed to create committee");
       }
-    } catch (err: any) {
-      setError(err.response?.data?.message || "Failed to create committee");
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, "Failed to create committee"));
     } finally {
       setCreating(false);
+    }
+  };
+
+  const openEditCommittee = (committee: Committee) => {
+    setEditingCommittee(committee);
+    setEditName(committee.name);
+    setEditTermStart(toDateInputValue(committee.termStart));
+    setEditTermEnd(toDateInputValue(committee.termEnd));
+    setShowEditDialog(true);
+  };
+
+  const handleUpdateCommittee = async () => {
+    if (!editingCommittee || !editName.trim() || !editTermStart || !editTermEnd) return;
+
+    setSavingEdit(true);
+    setError("");
+    try {
+      const res = await committeeAPI.updateCommittee(editingCommittee.id, {
+        name: editName.trim(),
+        termStart: editTermStart,
+        termEnd: editTermEnd,
+      });
+
+      if (res.success) {
+        setShowEditDialog(false);
+        setEditingCommittee(null);
+        await fetchCommittees();
+      } else {
+        setError(res.message || "Failed to update committee");
+      }
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, "Failed to update committee"));
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleDeleteCommittee = async (committee: Committee) => {
+    const confirmed = window.confirm(
+      committee.isActive
+        ? `Delete active committee \"${committee.name}\"? This will remove all committee members and cannot be undone.`
+        : `Delete committee \"${committee.name}\"? This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    setDeletingCommitteeId(committee.id);
+    setError("");
+    try {
+      const res = await committeeAPI.deleteCommittee(committee.id);
+      if (!res.success) {
+        setError(res.message || "Failed to delete committee");
+        return;
+      }
+
+      if (expandedPast === committee.id) {
+        setExpandedPast(null);
+      }
+      if (editingCommittee?.id === committee.id) {
+        setShowEditDialog(false);
+        setEditingCommittee(null);
+      }
+
+      await fetchCommittees();
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, "Failed to delete committee"));
+    } finally {
+      setDeletingCommitteeId(null);
     }
   };
 
@@ -180,8 +266,8 @@ export default function CommitteePage() {
       } else {
         setAddMemberError(res.message || "Failed to add member");
       }
-    } catch (err: any) {
-      setAddMemberError(err.response?.data?.message || "Failed to add member");
+    } catch (err: unknown) {
+      setAddMemberError(getApiErrorMessage(err, "Failed to add member"));
     } finally {
       setAddingMember(false);
     }
@@ -199,6 +285,11 @@ export default function CommitteePage() {
 
   const handleDeactivate = async () => {
     if (!activeCommittee) return;
+
+    if (!window.confirm(`End current term for \"${activeCommittee.name}\"?`)) {
+      return;
+    }
+
     try {
       await committeeAPI.deactivateCommittee(activeCommittee.id);
       await fetchCommittees();
@@ -234,6 +325,55 @@ export default function CommitteePage() {
     return !takenSingletonRoles.has(r.value);
   });
 
+  const renderCreateCommitteeForm = () => (
+    <div className="mx-auto max-w-md space-y-4 py-4">
+      <div className="space-y-2">
+        <Label htmlFor="committeeName">Committee Name</Label>
+        <Input
+          id="committeeName"
+          placeholder='e.g. "Spring 2026"'
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="termStart">Term Start</Label>
+          <Input
+            id="termStart"
+            type="date"
+            value={newTermStart}
+            onChange={(e) => setNewTermStart(e.target.value)}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="termEnd">Term End</Label>
+          <Input
+            id="termEnd"
+            type="date"
+            value={newTermEnd}
+            onChange={(e) => setNewTermEnd(e.target.value)}
+          />
+        </div>
+      </div>
+      <div className="flex gap-2 justify-end pt-2">
+        <Button
+          variant="outline"
+          onClick={() => setShowCreateForm(false)}
+          disabled={creating}
+        >
+          Cancel
+        </Button>
+        <Button
+          onClick={handleCreateCommittee}
+          disabled={creating || !newName.trim() || !newTermStart || !newTermEnd}
+        >
+          {creating ? "Creating..." : "Create Committee"}
+        </Button>
+      </div>
+    </div>
+  );
+
   // ── Render ─────────────────────────────────────────────────────
 
   if (loading) {
@@ -259,9 +399,23 @@ export default function CommitteePage() {
           title={activeCommittee.name}
           description={`${fmt(activeCommittee.termStart)} — ${fmt(activeCommittee.termEnd)}  ·  ${activeCommittee.members.length} member${activeCommittee.members.length !== 1 ? "s" : ""}`}
           actions={
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2 justify-end">
               <Button size="sm" onClick={handleOpenAddMember}>
                 + Add Member
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => openEditCommittee(activeCommittee)}
+              >
+                Edit Details
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setShowCreateForm((prev) => !prev)}
+              >
+                {showCreateForm ? "Hide New Term" : "New Committee"}
               </Button>
               <Button
                 size="sm"
@@ -269,6 +423,14 @@ export default function CommitteePage() {
                 onClick={handleDeactivate}
               >
                 End Term
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={() => handleDeleteCommittee(activeCommittee)}
+                disabled={deletingCommitteeId === activeCommittee.id}
+              >
+                {deletingCommitteeId === activeCommittee.id ? "Deleting..." : "Delete"}
               </Button>
             </div>
           }
@@ -304,53 +466,17 @@ export default function CommitteePage() {
               </Button>
             </div>
           ) : (
-            <div className="mx-auto max-w-md space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="committeeName">Committee Name</Label>
-                <Input
-                  id="committeeName"
-                  placeholder='e.g. "Spring 2026"'
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="termStart">Term Start</Label>
-                  <Input
-                    id="termStart"
-                    type="date"
-                    value={newTermStart}
-                    onChange={(e) => setNewTermStart(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="termEnd">Term End</Label>
-                  <Input
-                    id="termEnd"
-                    type="date"
-                    value={newTermEnd}
-                    onChange={(e) => setNewTermEnd(e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="flex gap-2 justify-end pt-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setShowCreateForm(false)}
-                  disabled={creating}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleCreateCommittee}
-                  disabled={creating || !newName.trim() || !newTermStart || !newTermEnd}
-                >
-                  {creating ? "Creating..." : "Create Committee"}
-                </Button>
-              </div>
-            </div>
+            renderCreateCommitteeForm()
           )}
+        </SectionCard>
+      )}
+
+      {activeCommittee && showCreateForm && (
+        <SectionCard
+          title="Create New Committee"
+          description="Start a new term. The current active term will be deactivated automatically."
+        >
+          {renderCreateCommitteeForm()}
         </SectionCard>
       )}
 
@@ -466,6 +592,76 @@ export default function CommitteePage() {
         </DialogContent>
       </Dialog>
 
+      {/* ── Edit Committee Dialog ────────────────────────────── */}
+      <Dialog
+        open={showEditDialog}
+        onOpenChange={(open) => {
+          setShowEditDialog(open);
+          if (!open) {
+            setEditingCommittee(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Committee</DialogTitle>
+            <DialogDescription>
+              Update committee name and term dates.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="editCommitteeName">Committee Name</Label>
+              <Input
+                id="editCommitteeName"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="editTermStart">Term Start</Label>
+                <Input
+                  id="editTermStart"
+                  type="date"
+                  value={editTermStart}
+                  onChange={(e) => setEditTermStart(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="editTermEnd">Term End</Label>
+                <Input
+                  id="editTermEnd"
+                  type="date"
+                  value={editTermEnd}
+                  onChange={(e) => setEditTermEnd(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowEditDialog(false);
+                setEditingCommittee(null);
+              }}
+              disabled={savingEdit}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleUpdateCommittee}
+              disabled={savingEdit || !editName.trim() || !editTermStart || !editTermEnd}
+            >
+              {savingEdit ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* ── Past Committees ──────────────────────────────────── */}
       {pastCommittees.length > 0 && (
         <SectionCard
@@ -498,15 +694,35 @@ export default function CommitteePage() {
                     </span>
                   </button>
                   {isExpanded && (
-                    <div className="px-5 pb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                      {sortedMembers(c.members).map((m) => (
-                        <MemberCard key={m.id} member={m} />
-                      ))}
-                      {c.members.length === 0 && (
-                        <p className="text-sm text-muted-foreground col-span-full">
-                          No members were assigned.
-                        </p>
-                      )}
+                    <div className="px-5 pb-4 space-y-3">
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openEditCommittee(c)}
+                        >
+                          Edit Details
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => handleDeleteCommittee(c)}
+                          disabled={deletingCommitteeId === c.id}
+                        >
+                          {deletingCommitteeId === c.id ? "Deleting..." : "Delete"}
+                        </Button>
+                      </div>
+
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        {sortedMembers(c.members).map((m) => (
+                          <MemberCard key={m.id} member={m} />
+                        ))}
+                        {c.members.length === 0 && (
+                          <p className="text-sm text-muted-foreground col-span-full">
+                            No members were assigned.
+                          </p>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -527,6 +743,32 @@ function fmt(dateStr: string) {
     day: "numeric",
     year: "numeric",
   });
+}
+
+function toDateInputValue(dateStr: string) {
+  const d = new Date(dateStr);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getApiErrorMessage(error: unknown, fallback: string) {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "response" in error &&
+    typeof (error as { response?: unknown }).response === "object" &&
+    (error as { response?: unknown }).response !== null
+  ) {
+    const response = (error as { response?: { data?: { message?: unknown } } }).response;
+    const message = response?.data?.message;
+    if (typeof message === "string" && message.trim()) {
+      return message;
+    }
+  }
+
+  return fallback;
 }
 
 // ─── Member Card Sub-component ──────────────────────────────────────
