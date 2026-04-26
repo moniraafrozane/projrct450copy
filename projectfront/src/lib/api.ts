@@ -589,6 +589,8 @@ interface UserListResponse {
 
 export type UserListItem = UserListResponse['users'][number];
 
+type AssignableRole = 'admin' | 'society';
+
 export const userAPI = {
   getUsers: async (): Promise<UserListResponse> => {
     const response = await api.get('/auth/users');
@@ -600,6 +602,14 @@ export const userAPI = {
     reason: string
   ): Promise<ApiResponse<{ id: string; isActive: boolean }>> => {
     const response = await api.put(`/auth/users/${id}/close`, { reason });
+    return response.data;
+  },
+
+  assignRole: async (
+    id: string,
+    payload: { role: AssignableRole; societyName?: string; societyRole?: string }
+  ): Promise<{ success: boolean; message?: string; user: UserListItem }> => {
+    const response = await api.put(`/auth/users/${id}/assign-role`, payload);
     return response.data;
   },
 };
@@ -672,6 +682,11 @@ export const committeeAPI = {
     data: { name?: string; termStart?: string; termEnd?: string }
   ): Promise<ApiResponse<Committee>> => {
     const response = await api.put(`/committees/${id}`, data);
+    return response.data;
+  },
+
+  deleteCommittee: async (id: string): Promise<ApiResponse> => {
+    const response = await api.delete(`/committees/${id}`);
     return response.data;
   },
 
@@ -939,6 +954,11 @@ export const voucherAPI = {
 
   submitVoucher: async (id: string): Promise<{ success: boolean; message?: string; voucher: Voucher }> => {
     const response = await api.put(`/vouchers/${id}/submit`, {});
+    return response.data;
+  },
+
+  forwardVoucher: async (id: string): Promise<{ success: boolean; message?: string; voucher: Voucher }> => {
+    const response = await api.put(`/vouchers/${id}/forward`, {});
     return response.data;
   },
 
