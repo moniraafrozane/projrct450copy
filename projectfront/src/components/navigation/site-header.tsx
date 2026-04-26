@@ -24,9 +24,9 @@ const ROLE_NAV: Record<string, { href: string; label: string }> = {
 };
 
 const registerRoleOptions = [
-  { value: "student", label: "Student",        icon: "🎓" },
-  { value: "admin",   label: "Admin",          icon: "👨‍💼" },
+  { value: "student", label: "Student", icon: "🎓" },
   { value: "society", label: "Society Member", icon: "👥" },
+  { value: "admin", label: "Admin", icon: "👨‍💼" },
 ];
 
 export function SiteHeader() {
@@ -345,28 +345,22 @@ export function SiteHeader() {
         </div>
       </header>
 
-      {/* Sign Up role picker modal */}
       <Dialog open={showSignUpModal} onOpenChange={setShowSignUpModal}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="text-2xl">Select Your Role</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3 py-4">
-            {registerRoleOptions.map((opt) => (
-              <label
-                key={opt.value}
-                className="flex cursor-pointer items-center gap-4 rounded-lg border border-border p-4 hover:bg-muted/40"
+            {registerRoleOptions.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                className="flex items-center gap-4 rounded-lg border border-border p-4 text-left transition-colors hover:bg-muted/40"
+                onClick={() => handleSignUpRoleSelect(option.value)}
               >
-                <input
-                  type="radio"
-                  name="signup-role"
-                  value={opt.value}
-                  onChange={() => handleSignUpRoleSelect(opt.value)}
-                  className="h-4 w-4"
-                />
-                <span className="text-xl">{opt.icon}</span>
-                <h3 className="font-semibold">{opt.label}</h3>
-              </label>
+                <span className="text-xl" aria-hidden="true">{option.icon}</span>
+                <span className="font-semibold text-foreground">{option.label}</span>
+              </button>
             ))}
           </div>
         </DialogContent>
