@@ -74,6 +74,12 @@ export default function AdminDashboardPage() {
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserListItem | null>(null);
   const [closeReason, setCloseReason] = useState("");
+  const [roleDialogOpen, setRoleDialogOpen] = useState(false);
+  const [roleTargetUser, setRoleTargetUser] = useState<UserListItem | null>(null);
+  const [selectedAssignRole, setSelectedAssignRole] = useState<"admin" | "society">("society");
+  const [societyNameInput, setSocietyNameInput] = useState("");
+  const [societyRoleInput, setSocietyRoleInput] = useState("");
+  const [assigningRoleUserId, setAssigningRoleUserId] = useState<string | null>(null);
 
   useEffect(() => {
     applicationAPI
@@ -196,6 +202,62 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const handleOpenAssignRole = (user: UserListItem) => {
+    const missingAdminRole = !user.roles.includes("admin");
+    setSelectedAssignRole(missingAdminRole ? "admin" : "society");
+    setRoleTargetUser(user);
+    setSocietyNameInput(user.societyName || "");
+    setSocietyRoleInput(user.societyRole || "");
+    setAccountError("");
+    setRoleDialogOpen(true);
+  };
+
+  const handleAssignRole = async () => {
+    if (!roleTargetUser) return;
+
+    if (selectedAssignRole === "society" && !societyRoleInput.trim()) {
+      setAccountError("Society position/role is required for society assignment.");
+      setAccountMessage("");
+      return;
+    }
+
+    setAssigningRoleUserId(roleTargetUser.id);
+    setAccountMessage("");
+    setAccountError("");
+
+    try {
+      const response = await userAPI.assignRole(roleTargetUser.id, {
+        role: selectedAssignRole,
+        societyName: selectedAssignRole === "society" ? societyNameInput.trim() || undefined : undefined,
+        societyRole: selectedAssignRole === "society" ? societyRoleInput.trim() : undefined,
+      });
+
+      setUsers((prev) =>
+        prev.map((user) =>
+          user.id === roleTargetUser.id
+            ? {
+                ...user,
+                roles: response.user?.roles || user.roles,
+                societyName: response.user?.societyName ?? user.societyName,
+                societyRole: response.user?.societyRole ?? user.societyRole,
+              }
+            : user
+        )
+      );
+
+      const assignedLabel = selectedAssignRole === "admin" ? "admin" : "society member";
+      setAccountMessage(`${roleTargetUser.name} is now assigned as ${assignedLabel}.`);
+      setRoleDialogOpen(false);
+      setRoleTargetUser(null);
+      setSocietyNameInput("");
+      setSocietyRoleInput("");
+    } catch (error: unknown) {
+      setAccountError(getApiErrorMessage(error, "Failed to assign role. Please try again."));
+    } finally {
+      setAssigningRoleUserId(null);
+    }
+  };
+
   const renderUserRow = (user: UserListItem, kind: "student" | "society") => (
     <div key={user.id} className="rounded-2xl border border-border/70 p-4">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -212,10 +274,28 @@ export default function AdminDashboardPage() {
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
           <Badge variant={user.isActive ? "success" : "warning"}>
             {user.isActive ? "Active" : "Closed"}
           </Badge>
+          {kind === "student" && (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => handleOpenAssignRole(user)}
+              disabled={
+                !user.isActive ||
+                assigningRoleUserId === user.id ||
+                (user.roles.includes("admin") && user.roles.includes("society"))
+              }
+            >
+              {assigningRoleUserId === user.id
+                ? "Assigning..."
+                : user.roles.includes("admin") && user.roles.includes("society")
+                ? "All roles assigned"
+                : "Assign role"}
+            </Button>
+          )}
           <Button
             size="sm"
             variant="outline"
@@ -494,6 +574,120 @@ export default function AdminDashboardPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={roleDialogOpen}
+        onOpenChange={(open) => {
+          setRoleDialogOpen(open);
+          if (!open) {
+            setRoleTargetUser(null);
+            setSocietyNameInput("");
+            setSocietyRoleInput("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Assign role to student</DialogTitle>
+            <DialogDescription>
+              Choose whether this student should become a society member or a new admin.
+            </DialogDescription>
+          </DialogHeader>
+
+          {roleTargetUser && (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-border/70 p-3 text-sm">
+                <p className="font-semibold text-foreground">{roleTargetUser.name}</p>
+                <p className="text-muted-foreground">{roleTargetUser.email}</p>
+                <p className="text-xs text-muted-foreground mt-1">Current roles: {roleTargetUser.roles.join(", ")}</p>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-foreground">Role to assign</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant={selectedAssignRole === "admin" ? "default" : "outline"}
+                    onClick={() => setSelectedAssignRole("admin")}
+                    disabled={roleTargetUser.roles.includes("admin")}
+                  >
+                    Make Admin
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={selectedAssignRole === "society" ? "default" : "outline"}
+                    onClick={() => setSelectedAssignRole("society")}
+                    disabled={roleTargetUser.roles.includes("society")}
+                  >
+                    Make Society Member
+                  </Button>
+                </div>
+              </div>
+
+              {selectedAssignRole === "society" && (
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="flex flex-col gap-2 text-sm">
+                    Society name
+                    <input
+                      type="text"
+                      value={societyNameInput}
+                      onChange={(e) => setSocietyNameInput(e.target.value)}
+                      className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground"
+                      placeholder="e.g. CSE Society"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-2 text-sm">
+                    Society position *
+                    <input
+                      type="text"
+                      value={societyRoleInput}
+                      onChange={(e) => setSocietyRoleInput(e.target.value)}
+                      className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground"
+                      placeholder="e.g. General Secretary"
+                    />
+                  </label>
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setRoleDialogOpen(false);
+                setRoleTargetUser(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAssignRole}
+              disabled={!roleTargetUser || assigningRoleUserId === roleTargetUser.id}
+            >
+              {assigningRoleUserId === roleTargetUser?.id ? "Assigning..." : "Confirm assignment"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
+}
+
+function getApiErrorMessage(error: unknown, fallback: string) {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "response" in error &&
+    typeof (error as { response?: unknown }).response === "object" &&
+    (error as { response?: unknown }).response !== null
+  ) {
+    const response = (error as { response?: { data?: { message?: unknown } } }).response;
+    const message = response?.data?.message;
+    if (typeof message === "string" && message.trim()) {
+      return message;
+    }
+  }
+
+  return fallback;
 }
