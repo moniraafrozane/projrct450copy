@@ -5,6 +5,7 @@ const {
   getMe,
   getUsers,
   closeUserAccount,
+  assignUserRole,
   updateDetails,
   updatePassword,
   logout
@@ -21,6 +22,7 @@ router.post('/login', login);
 router.get('/me', protect, getMe);
 router.get('/users', protect, authorize('admin'), getUsers);
 router.put('/users/:id/close', protect, authorize('admin'), closeUserAccount);
+router.put('/users/:id/assign-role', protect, authorize('admin'), assignUserRole);
 router.put('/update', protect, updateDetails);
 router.put('/updatepassword', protect, updatePassword);
 router.post('/logout', protect, logout);
