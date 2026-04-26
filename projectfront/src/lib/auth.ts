@@ -1,4 +1,4 @@
-import api, { ApiResponse } from './api';
+import api from './api';
 
 // User type definition
 export interface User {
@@ -38,8 +38,8 @@ export interface RegisterData {
   name: string;
   email: string;
   password: string;
-  phone?: string;
   role: 'student' | 'admin' | 'society';
+  phone?: string;
   studentId?: string;
   program?: string;
   year?: number;
