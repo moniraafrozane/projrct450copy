@@ -218,9 +218,9 @@ export default function EventExpensePage() {
     }
   };
 
-  // ── Forward to Admin ────────────────────────────────────────────────────────
+  // ── Submit to Admin ─────────────────────────────────────────────────────────
 
-  const forwardToAdmin = async (voucherId: string) => {
+  const submitToAdmin = async (voucherId: string) => {
     try {
       setSubmittingId(voucherId);
       setError("");
@@ -230,9 +230,9 @@ export default function EventExpensePage() {
           v.id === voucherId ? { ...v, status: res.voucher?.status || "submitted" } : v
         )
       );
-      flash(res.message || "Forwarded to admin");
+      flash(res.message || "Submitted to admin");
     } catch (err: any) {
-      setError(err.response?.data?.message || "Failed to forward to admin");
+      setError(err.response?.data?.message || "Failed to submit to admin");
     } finally {
       setSubmittingId(null);
     }
@@ -479,10 +479,10 @@ export default function EventExpensePage() {
                                 <Button
                                   size="sm"
                                   variant="secondary"
-                                  onClick={() => forwardToAdmin(voucher.id)}
+                                  onClick={() => submitToAdmin(voucher.id)}
                                   disabled={submittingId === voucher.id || !!editingId}
                                 >
-                                  {submittingId === voucher.id ? "Forwarding…" : "Forward to admin"}
+                                  {submittingId === voucher.id ? "Submitting..." : "Submit to admin"}
                                 </Button>
                               </>
                             )}
