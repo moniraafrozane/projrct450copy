@@ -60,6 +60,37 @@ export interface ApiError {
   error?: string;
 }
 
+export type NotificationType = 'event_created' | 'event_updated' | 'receipt_accepted';
+
+export interface NotificationItem {
+  id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  isRead: boolean;
+  readAt?: string | null;
+  createdAt: string;
+  eventId?: string | null;
+  eventTitle?: string | null;
+  actorName?: string | null;
+  actorSocietyName?: string | null;
+}
+
+export interface NotificationsResponse {
+  success: boolean;
+  notifications: NotificationItem[];
+}
+
+export interface NotificationCountResponse {
+  success: boolean;
+  unreadCount: number;
+}
+
+export interface NotificationSingleResponse {
+  success: boolean;
+  notification: NotificationItem;
+}
+
 // Event-related types
 export interface Event {
   id: string;
@@ -319,6 +350,31 @@ export const eventAPI = {
   },
 };
 
+export const notificationAPI = {
+  getMyNotifications: async (params?: {
+    unreadOnly?: boolean;
+    limit?: number;
+  }): Promise<NotificationsResponse> => {
+    const response = await api.get('/notifications', { params });
+    return response.data;
+  },
+
+  getUnreadCount: async (): Promise<NotificationCountResponse> => {
+    const response = await api.get('/notifications/unread-count');
+    return response.data;
+  },
+
+  markAsRead: async (notificationId: string): Promise<NotificationSingleResponse> => {
+    const response = await api.patch(`/notifications/${notificationId}/read`);
+    return response.data;
+  },
+
+  markAllAsRead: async (): Promise<ApiResponse & { updatedCount?: number }> => {
+    const response = await api.patch('/notifications/read-all');
+    return response.data;
+  },
+};
+
 // ─── Analytics Reports API ─────────────────────────────────────────
 export type AnalyticsMetricKey =
   | 'total_events_per_year'
@@ -533,6 +589,8 @@ interface UserListResponse {
 
 export type UserListItem = UserListResponse['users'][number];
 
+type AssignableRole = 'admin' | 'society';
+
 export const userAPI = {
   getUsers: async (): Promise<UserListResponse> => {
     const response = await api.get('/auth/users');
@@ -544,6 +602,14 @@ export const userAPI = {
     reason: string
   ): Promise<ApiResponse<{ id: string; isActive: boolean }>> => {
     const response = await api.put(`/auth/users/${id}/close`, { reason });
+    return response.data;
+  },
+
+  assignRole: async (
+    id: string,
+    payload: { role: AssignableRole; societyName?: string; societyRole?: string }
+  ): Promise<{ success: boolean; message?: string; user: UserListItem }> => {
+    const response = await api.put(`/auth/users/${id}/assign-role`, payload);
     return response.data;
   },
 };
@@ -616,6 +682,11 @@ export const committeeAPI = {
     data: { name?: string; termStart?: string; termEnd?: string }
   ): Promise<ApiResponse<Committee>> => {
     const response = await api.put(`/committees/${id}`, data);
+    return response.data;
+  },
+
+  deleteCommittee: async (id: string): Promise<ApiResponse> => {
+    const response = await api.delete(`/committees/${id}`);
     return response.data;
   },
 
@@ -797,8 +868,8 @@ export const applicationAPI = {
     return response.data;
   },
 
-  approveApplication: async (id: string): Promise<ApplicationResponse> => {
-    const response = await api.put(`/applications/${id}/approve`, {});
+  approveApplication: async (id: string, adminNotes?: string): Promise<ApplicationResponse> => {
+    const response = await api.put(`/applications/${id}/approve`, adminNotes ? { adminNotes } : {});
     return response.data;
   },
 
@@ -883,6 +954,11 @@ export const voucherAPI = {
 
   submitVoucher: async (id: string): Promise<{ success: boolean; message?: string; voucher: Voucher }> => {
     const response = await api.put(`/vouchers/${id}/submit`, {});
+    return response.data;
+  },
+
+  forwardVoucher: async (id: string): Promise<{ success: boolean; message?: string; voucher: Voucher }> => {
+    const response = await api.put(`/vouchers/${id}/forward`, {});
     return response.data;
   },
 

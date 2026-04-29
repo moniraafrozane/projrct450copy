@@ -544,6 +544,7 @@ exports.forwardToAdmin = async (req, res) => {
 exports.approveApplication = async (req, res) => {
   try {
     const { id } = req.params;
+    const adminNotes = req.body?.adminNotes ? String(req.body.adminNotes).trim() : '';
 
     const existing = await prisma.societyApplication.findUnique({ where: { id } });
     if (!existing) {
@@ -566,14 +567,17 @@ exports.approveApplication = async (req, res) => {
 
     const application = await prisma.societyApplication.update({
       where: { id },
-      data: { status: 'approved' },
+      data: {
+        status: 'approved',
+        adminNotes: adminNotes || null,
+      },
     });
 
     // Log audit trail
     createAuditLog({
       action: 'application_approved',
       module: 'applications',
-      description: `Society application approved for society: ${existing.societyId}`,
+      description: `Society application approved for society: ${existing.societyId}${adminNotes ? `. Notes: ${adminNotes}` : ''}`,
       actorId: req.user.id,
       actorEmail: req.user.email,
       actorName: req.user.name,
@@ -586,6 +590,7 @@ exports.approveApplication = async (req, res) => {
       metadata: {
         societyId: existing.societyId,
         approvedAt: new Date().toISOString(),
+        adminNotes: adminNotes || null,
       }
     }).catch(err => console.error('Audit log error:', err));
 

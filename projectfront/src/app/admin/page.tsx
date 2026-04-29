@@ -55,10 +55,6 @@ export default function AdminDashboardPage() {
   const [applications, setApplications] = useState<SocietyApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [actionMessage, setActionMessage] = useState("");
-  const [actionError, setActionError] = useState("");
-  const [loadingActionId, setLoadingActionId] = useState<string | null>(null);
-  const [noteById, setNoteById] = useState<Record<string, string>>({});
   const [users, setUsers] = useState<UserListItem[]>([]);
   const [usersLoading, setUsersLoading] = useState(true);
   const [usersError, setUsersError] = useState("");
@@ -74,6 +70,12 @@ export default function AdminDashboardPage() {
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserListItem | null>(null);
   const [closeReason, setCloseReason] = useState("");
+  const [roleDialogOpen, setRoleDialogOpen] = useState(false);
+  const [roleTargetUser, setRoleTargetUser] = useState<UserListItem | null>(null);
+  const [selectedAssignRole, setSelectedAssignRole] = useState<"admin" | "society">("society");
+  const [societyNameInput, setSocietyNameInput] = useState("");
+  const [societyRoleInput, setSocietyRoleInput] = useState("");
+  const [assigningRoleUserId, setAssigningRoleUserId] = useState<string | null>(null);
 
   useEffect(() => {
     applicationAPI
@@ -118,54 +120,6 @@ export default function AdminDashboardPage() {
     [users]
   );
 
-  const syncApplication = (updated: SocietyApplication) => {
-    setApplications((prev) => prev.map((app) => (app.id === updated.id ? updated : app)));
-  };
-
-  const handleApprove = async (id: string) => {
-    setLoadingActionId(id);
-    setActionMessage("");
-    setActionError("");
-
-    try {
-      const res = await applicationAPI.approveApplication(id);
-      syncApplication(res.application);
-      setActionMessage("Application approved successfully.");
-    } catch (error: any) {
-      setActionError(
-        error?.response?.data?.message || "Failed to approve application. Please try again."
-      );
-    } finally {
-      setLoadingActionId(null);
-    }
-  };
-
-  const handleReturn = async (id: string) => {
-    const note = (noteById[id] ?? "").trim();
-    if (!note) {
-      setActionError("Admin note is required to return an application.");
-      setActionMessage("");
-      return;
-    }
-
-    setLoadingActionId(id);
-    setActionMessage("");
-    setActionError("");
-
-    try {
-      const res = await applicationAPI.returnApplication(id, note);
-      syncApplication(res.application);
-      setActionMessage("Application returned to society member.");
-      setNoteById((prev) => ({ ...prev, [id]: "" }));
-    } catch (error: any) {
-      setActionError(
-        error?.response?.data?.message || "Failed to return application. Please try again."
-      );
-    } finally {
-      setLoadingActionId(null);
-    }
-  };
-
   const handleCloseAccount = async () => {
     if (!selectedUser) return;
 
@@ -196,6 +150,62 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const handleOpenAssignRole = (user: UserListItem) => {
+    const missingAdminRole = !user.roles.includes("admin");
+    setSelectedAssignRole(missingAdminRole ? "admin" : "society");
+    setRoleTargetUser(user);
+    setSocietyNameInput(user.societyName || "");
+    setSocietyRoleInput(user.societyRole || "");
+    setAccountError("");
+    setRoleDialogOpen(true);
+  };
+
+  const handleAssignRole = async () => {
+    if (!roleTargetUser) return;
+
+    if (selectedAssignRole === "society" && !societyRoleInput.trim()) {
+      setAccountError("Society position/role is required for society assignment.");
+      setAccountMessage("");
+      return;
+    }
+
+    setAssigningRoleUserId(roleTargetUser.id);
+    setAccountMessage("");
+    setAccountError("");
+
+    try {
+      const response = await userAPI.assignRole(roleTargetUser.id, {
+        role: selectedAssignRole,
+        societyName: selectedAssignRole === "society" ? societyNameInput.trim() || undefined : undefined,
+        societyRole: selectedAssignRole === "society" ? societyRoleInput.trim() : undefined,
+      });
+
+      setUsers((prev) =>
+        prev.map((user) =>
+          user.id === roleTargetUser.id
+            ? {
+                ...user,
+                roles: response.user?.roles || user.roles,
+                societyName: response.user?.societyName ?? user.societyName,
+                societyRole: response.user?.societyRole ?? user.societyRole,
+              }
+            : user
+        )
+      );
+
+      const assignedLabel = selectedAssignRole === "admin" ? "admin" : "society member";
+      setAccountMessage(`${roleTargetUser.name} is now assigned as ${assignedLabel}.`);
+      setRoleDialogOpen(false);
+      setRoleTargetUser(null);
+      setSocietyNameInput("");
+      setSocietyRoleInput("");
+    } catch (error: unknown) {
+      setAccountError(getApiErrorMessage(error, "Failed to assign role. Please try again."));
+    } finally {
+      setAssigningRoleUserId(null);
+    }
+  };
+
   const renderUserRow = (user: UserListItem, kind: "student" | "society") => (
     <div key={user.id} className="rounded-2xl border border-border/70 p-4">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -212,10 +222,28 @@ export default function AdminDashboardPage() {
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
           <Badge variant={user.isActive ? "success" : "warning"}>
             {user.isActive ? "Active" : "Closed"}
           </Badge>
+          {kind === "student" && (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => handleOpenAssignRole(user)}
+              disabled={
+                !user.isActive ||
+                assigningRoleUserId === user.id ||
+                (user.roles.includes("admin") && user.roles.includes("society"))
+              }
+            >
+              {assigningRoleUserId === user.id
+                ? "Assigning..."
+                : user.roles.includes("admin") && user.roles.includes("society")
+                ? "All roles assigned"
+                : "Assign role"}
+            </Button>
+          )}
           <Button
             size="sm"
             variant="outline"
@@ -236,7 +264,6 @@ export default function AdminDashboardPage() {
 
   const renderApplicationCard = (app: SocietyApplication) => {
     const status = STATUS_META[app.status] ?? STATUS_META.submitted;
-    const canReview = app.status === "submitted" || app.status === "under_review";
     const pdfViewSupported = app.type === "fund_withdrawal" || app.type === "event_approval";
 
     return (
@@ -261,42 +288,16 @@ export default function AdminDashboardPage() {
           </div>
         )}
 
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
-          <textarea
-            className="w-full rounded-2xl border border-border/70 bg-background px-4 py-3 text-sm"
-            placeholder="Add note before returning application"
-            value={noteById[app.id] ?? ""}
-            onChange={(e) => setNoteById((prev) => ({ ...prev, [app.id]: e.target.value }))}
-            disabled={!canReview || loadingActionId === app.id}
-          />
-          <div className="flex gap-2">
-            <Button className="flex-1" size="sm" variant="outline" asChild>
-              <a
-                href={pdfViewSupported ? `/admin/applications/${app.id}/pdf` : `/admin/applications/${app.id}`}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                View
-              </a>
-            </Button>
-            <Button
-              className="flex-1"
-              size="sm"
-              onClick={() => handleApprove(app.id)}
-              disabled={!canReview || loadingActionId === app.id}
+        <div className="mt-4 flex gap-2">
+          <Button className="flex-1" size="sm" variant="outline" asChild>
+            <a
+              href={pdfViewSupported ? `/admin/applications/${app.id}/pdf` : `/admin/applications/${app.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
             >
-              {loadingActionId === app.id ? "Processing..." : "Approve"}
-            </Button>
-            <Button
-              className="flex-1"
-              size="sm"
-              variant="outline"
-              onClick={() => handleReturn(app.id)}
-              disabled={!canReview || loadingActionId === app.id}
-            >
-              {loadingActionId === app.id ? "Processing..." : "Reject / Return"}
-            </Button>
-          </div>
+              View
+            </a>
+          </Button>
         </div>
       </div>
     );
@@ -304,17 +305,6 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="space-y-10">
-      {actionMessage && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          {actionMessage}
-        </div>
-      )}
-
-      {actionError && (
-        <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {actionError}
-        </div>
-      )}
 
       <SectionCard
         title="Sign-in oversight & approvals"
@@ -494,6 +484,120 @@ export default function AdminDashboardPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={roleDialogOpen}
+        onOpenChange={(open) => {
+          setRoleDialogOpen(open);
+          if (!open) {
+            setRoleTargetUser(null);
+            setSocietyNameInput("");
+            setSocietyRoleInput("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Assign role to student</DialogTitle>
+            <DialogDescription>
+              Choose whether this student should become a society member or a new admin.
+            </DialogDescription>
+          </DialogHeader>
+
+          {roleTargetUser && (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-border/70 p-3 text-sm">
+                <p className="font-semibold text-foreground">{roleTargetUser.name}</p>
+                <p className="text-muted-foreground">{roleTargetUser.email}</p>
+                <p className="text-xs text-muted-foreground mt-1">Current roles: {roleTargetUser.roles.join(", ")}</p>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-foreground">Role to assign</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant={selectedAssignRole === "admin" ? "default" : "outline"}
+                    onClick={() => setSelectedAssignRole("admin")}
+                    disabled={roleTargetUser.roles.includes("admin")}
+                  >
+                    Make Admin
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={selectedAssignRole === "society" ? "default" : "outline"}
+                    onClick={() => setSelectedAssignRole("society")}
+                    disabled={roleTargetUser.roles.includes("society")}
+                  >
+                    Make Society Member
+                  </Button>
+                </div>
+              </div>
+
+              {selectedAssignRole === "society" && (
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="flex flex-col gap-2 text-sm">
+                    Society name
+                    <input
+                      type="text"
+                      value={societyNameInput}
+                      onChange={(e) => setSocietyNameInput(e.target.value)}
+                      className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground"
+                      placeholder="e.g. CSE Society"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-2 text-sm">
+                    Society position *
+                    <input
+                      type="text"
+                      value={societyRoleInput}
+                      onChange={(e) => setSocietyRoleInput(e.target.value)}
+                      className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground"
+                      placeholder="e.g. General Secretary"
+                    />
+                  </label>
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setRoleDialogOpen(false);
+                setRoleTargetUser(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAssignRole}
+              disabled={!roleTargetUser || assigningRoleUserId === roleTargetUser.id}
+            >
+              {assigningRoleUserId === roleTargetUser?.id ? "Assigning..." : "Confirm assignment"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
+}
+
+function getApiErrorMessage(error: unknown, fallback: string) {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "response" in error &&
+    typeof (error as { response?: unknown }).response === "object" &&
+    (error as { response?: unknown }).response !== null
+  ) {
+    const response = (error as { response?: { data?: { message?: unknown } } }).response;
+    const message = response?.data?.message;
+    if (typeof message === "string" && message.trim()) {
+      return message;
+    }
+  }
+
+  return fallback;
 }

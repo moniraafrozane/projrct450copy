@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/patterns/page-header";
 import { SectionCard } from "@/components/patterns/section-card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 import {
   ApplicationStatus,
   BudgetBreakdownContent,
@@ -57,6 +58,7 @@ export default function AdminApplicationDetailPage() {
 
   useEffect(() => {
     const loadApplication = async () => {
+
       if (!id || typeof id !== "string") {
         setError("Invalid application id");
         setLoading(false);
@@ -117,7 +119,8 @@ export default function AdminApplicationDetailPage() {
       setSaving(true);
       setError("");
       setMessage("");
-      const res = await applicationAPI.approveApplication(application.id);
+      const note = adminNote.trim();
+      const res = await applicationAPI.approveApplication(application.id, note || undefined);
       setApplication(res.application);
       setMessage("Application approved successfully.");
     } catch (actionError: any) {
@@ -212,61 +215,66 @@ export default function AdminApplicationDetailPage() {
       </SectionCard>
 
       {!loading && application?.type === "budget_breakdown" && (
-        <SectionCard title="Budget details" description="Review full budget breakdown before action.">
-          <div className="space-y-4">
-            <div className="grid gap-3 text-sm md:grid-cols-2">
-              <p>
-                <span className="font-medium text-foreground">Event:</span> {budgetContent.eventTitle || "N/A"}
-              </p>
-              <p>
-                <span className="font-medium text-foreground">Date:</span>{" "}
-                {budgetContent.eventDate
-                  ? new Date(budgetContent.eventDate).toLocaleDateString("en-GB")
-                  : "N/A"}
-              </p>
-              <p>
-                <span className="font-medium text-foreground">Venue:</span> {budgetContent.eventVenue || "N/A"}
-              </p>
-              <p>
-                <span className="font-medium text-foreground">Organizer:</span> {budgetContent.organizerName || "N/A"}
-              </p>
-            </div>
-
-            {budgetSections.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No budget sections found.</p>
-            ) : (
-              <div className="space-y-3">
-                {budgetSections.map((section, index) => (
-                  <div key={`${section.key}-${index}`} className="rounded-xl border border-border/70 p-4">
-                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                      <p className="font-medium text-foreground">{section.title}</p>
-                      <p className="text-sm font-semibold text-foreground">
-                        BDT {Number(section.amount || 0).toLocaleString()}
-                      </p>
-                    </div>
-                    {section.notes && (
-                      <p className="mt-2 text-sm text-muted-foreground">{section.notes}</p>
-                    )}
-                    {section.optional && (
-                      <p className="mt-2 text-xs text-muted-foreground">Marked as optional</p>
-                    )}
-                  </div>
-                ))}
+        <div className="space-y-6">
+          <SectionCard title="Budget details" description="Review the budget sheet before deciding.">
+            <div className="space-y-4">
+              <div className="grid gap-3 text-sm md:grid-cols-2">
+                <p>
+                  <span className="font-medium text-foreground">Event:</span> {budgetContent.eventTitle || "N/A"}
+                </p>
+                <p>
+                  <span className="font-medium text-foreground">Date:</span>{" "}
+                  {budgetContent.eventDate
+                    ? new Date(budgetContent.eventDate).toLocaleDateString("en-GB")
+                    : "N/A"}
+                </p>
+                <p>
+                  <span className="font-medium text-foreground">Venue:</span> {budgetContent.eventVenue || "N/A"}
+                </p>
+                <p>
+                  <span className="font-medium text-foreground">Organizer:</span> {budgetContent.organizerName || "N/A"}
+                </p>
               </div>
-            )}
 
-            <div className="grid gap-3 text-sm md:grid-cols-2">
-              <p>
-                <span className="font-medium text-foreground">Calculated total:</span>{" "}
-                BDT {Number(budgetContent.calculatedTotal || 0).toLocaleString()}
-              </p>
-              <p>
-                <span className="font-medium text-foreground">Final total:</span>{" "}
-                BDT {Number(budgetContent.totalAmount || 0).toLocaleString()}
-              </p>
+              {budgetSections.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No budget sections found.</p>
+              ) : (
+                <div className="overflow-hidden rounded-2xl border border-border/70 bg-background shadow-sm">
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full border-collapse text-sm">
+                      <thead className="sticky top-0 z-10 bg-muted/90 text-left text-xs uppercase tracking-wide text-muted-foreground backdrop-blur">
+                        <tr>
+                          <th className="border-b border-border/70 px-4 py-3 font-semibold">Category</th>
+                          <th className="border-b border-border/70 px-4 py-3 font-semibold text-right">Amount (BDT)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {budgetSections.map((section, index) => (
+                          <tr key={`${section.key}-${index}`} className="align-top odd:bg-muted/10 even:bg-background">
+                            <td className="border-b border-r border-border/60 px-4 py-3 font-medium text-foreground">
+                              {section.title}
+                            </td>
+                            <td className="border-b border-border/60 px-4 py-3 text-right font-medium text-foreground tabular-nums">
+                              {Number(section.amount || 0).toLocaleString()}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot className="bg-muted/50 text-sm font-semibold text-foreground">
+                        <tr>
+                          <td className="border-t border-border/70 px-4 py-3">Calculated total</td>
+                          <td className="border-t border-border/70 px-4 py-3 text-right tabular-nums">
+                            BDT {Number(budgetContent.calculatedTotal || 0).toLocaleString()}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
-        </SectionCard>
+          </SectionCard>
+        </div>
       )}
 
       {!loading && application?.type !== "budget_breakdown" && application && (
@@ -351,6 +359,39 @@ export default function AdminApplicationDetailPage() {
               {JSON.stringify(application.content || {}, null, 2)}
             </pre>
           )}
+        </SectionCard>
+      )}
+
+      {!loading && application && (
+        <SectionCard
+          title="Review decision"
+          description="Approve or reject this application after checking the content above."
+        >
+          <div className="space-y-4">
+            <label className="flex flex-col gap-2 text-sm">
+              Admin note
+              <Textarea
+                value={adminNote}
+                onChange={(e) => setAdminNote(e.target.value)}
+                placeholder="Add a note for approval or rejection"
+                rows={4}
+                disabled={saving || !canReview}
+              />
+            </label>
+
+            <div className="flex flex-wrap gap-3">
+              <Button onClick={handleApprove} disabled={saving || !canReview}>
+                {saving ? "Processing..." : "Approve"}
+              </Button>
+              <Button variant="outline" onClick={handleReturn} disabled={saving || !canReview}>
+                {saving ? "Processing..." : "Reject"}
+              </Button>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Rejecting requires an admin note. The same note is saved as the return reason, and it can also be attached to approvals.
+            </p>
+          </div>
         </SectionCard>
       )}
 

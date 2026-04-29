@@ -3,6 +3,16 @@ const jwt = require('jsonwebtoken');
 const { createAuditLog } = require('./auditLogController');
 const { hashPassword, comparePassword } = require('../utils/password');
 
+const COMMITTEE_ROLE_LABELS = {
+  VICE_PRESIDENT: 'Vice President',
+  GENERAL_SECRETARY: 'General Secretary',
+  EVENT_CULTURAL_SECRETARY: 'Event & Cultural Secretary',
+  SPORTS_SECRETARY: 'Sports Secretary',
+  PUBLICATION_SECRETARY: 'Publication Secretary',
+  ASSISTANT_EVENT_CULTURAL_SECRETARY: 'Assistant Event & Cultural Secretary',
+  EXECUTIVE_MEMBER: 'Executive Member',
+};
+
 // Generate JWT Token
 const signToken = (id) => {
   if (!process.env.JWT_SECRET) {
@@ -39,47 +49,139 @@ const sendTokenResponse = (user, statusCode, res) => {
 // @access  Public
 exports.register = async (req, res) => {
   try {
-    const { name, email, password, phone, role, studentId, program, year, societyName, societyRole } = req.body;
+    const { name, email, password, phone, role, studentId, program, year } = req.body;
+    const requestedRole = typeof role === 'string' ? role.trim().toLowerCase() : 'student';
     const trimmedPhone = typeof phone === 'string' ? phone.trim() : '';
     const trimmedStudentId = typeof studentId === 'string' ? studentId.trim() : '';
     
     // Validate required fields
-    if (!name || !email || !password) {
+    if (!email || !password) {
       return res.status(400).json({
         success: false,
-        message: 'Name, email, and password are required'
+        message: 'Email and password are required'
+      });
+    }
+
+    if (requestedRole !== 'society' && !name) {
+      return res.status(400).json({
+        success: false,
+        message: 'Name is required for student/admin signup'
       });
     }
     
-    if (!role || !['student', 'admin', 'society'].includes(role)) {
+    if (!['student', 'admin', 'society'].includes(requestedRole)) {
       return res.status(400).json({
         success: false,
         message: 'Valid role (student, admin, or society) is required'
       });
     }
-    
-    const normalizedEmail = email.trim().toLowerCase();
-    
-    // Validation: Admin requires phone number
-    if (role === 'admin' && !phone) {
+
+    if (requestedRole === 'student' && (!trimmedStudentId || !trimmedPhone)) {
       return res.status(400).json({
         success: false,
-        message: 'Phone number is required for admin registration'
+        message: 'Registration number and phone number are required for student signup'
       });
     }
 
-    // Validation: Student requires registration number and phone number
-    if (role === 'student' && (!trimmedStudentId || !trimmedPhone)) {
+    if (requestedRole === 'admin' && !trimmedPhone) {
       return res.status(400).json({
         success: false,
-        message: 'Registration number and phone number are required for student registration'
+        message: 'Phone number is required for admin signup'
       });
     }
+    
+    const normalizedEmail = email.trim().toLowerCase();
     
     // Check if user already exists by email
     const existingUser = await prisma.user.findUnique({
       where: { email: normalizedEmail }
     });
+
+    if (requestedRole === 'society') {
+      if (!existingUser) {
+        return res.status(403).json({
+          success: false,
+          message: 'Society signup is available only for users already added as committee members by admin.'
+        });
+      }
+
+      if (!existingUser.isActive) {
+        return res.status(401).json({
+          success: false,
+          message: 'Your account has been deactivated. Please contact admin.'
+        });
+      }
+
+      const hasStudentRole = Array.isArray(existingUser.roles) && existingUser.roles.includes('student');
+      if (!hasStudentRole) {
+        return res.status(403).json({
+          success: false,
+          message: 'Only existing student accounts can activate society member access.'
+        });
+      }
+
+      if (!existingUser.password || typeof existingUser.password !== 'string') {
+        return res.status(401).json({
+          success: false,
+          message: 'Account password is not set. Please reset your password.'
+        });
+      }
+
+      const isPasswordMatch = await comparePassword(password, existingUser.password);
+      if (!isPasswordMatch) {
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid credentials'
+        });
+      }
+
+      const committeeMembership = await prisma.committeeMember.findFirst({
+        where: {
+          userId: existingUser.id,
+          committee: { isActive: true },
+        },
+        include: {
+          committee: {
+            select: { name: true },
+          },
+        },
+        orderBy: { assignedAt: 'desc' },
+      });
+
+      if (!committeeMembership) {
+        return res.status(403).json({
+          success: false,
+          message: 'You can sign up as society member only after admin adds you as an active committee member.'
+        });
+      }
+
+      const updateData = {};
+      const hasSocietyRole = existingUser.roles.includes('society');
+      if (!hasSocietyRole) {
+        updateData.roles = { push: 'society' };
+      }
+
+      if (!existingUser.societyName) {
+        updateData.societyName = committeeMembership.committee?.name || 'CSE Society';
+      }
+
+      if (!existingUser.societyRole) {
+        updateData.societyRole = COMMITTEE_ROLE_LABELS[committeeMembership.role] || 'Committee Member';
+      }
+
+      const user = Object.keys(updateData).length
+        ? await prisma.user.update({ where: { id: existingUser.id }, data: updateData })
+        : existingUser;
+
+      return sendTokenResponse(user, 200, res);
+    }
+
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is already registered. Please log in.'
+      });
+    }
 
     // Check if studentId already taken by a different account
     if (trimmedStudentId) {
@@ -95,66 +197,23 @@ exports.register = async (req, res) => {
       }
     }
 
-    // If email exists, allow adding a new role and persist submitted role-specific details
-    if (existingUser) {
-      if (existingUser.roles.includes(role)) {
-        return res.status(400).json({
-          success: false,
-          message: `You are already registered with the ${role} role`
-        });
-      }
-
-      const roleUpdateData = {
-        roles: { push: role }
-      };
-
-      if (role === 'student') {
-        roleUpdateData.studentId = trimmedStudentId;
-        roleUpdateData.program = program || existingUser.program;
-        roleUpdateData.year = year || existingUser.year;
-        roleUpdateData.phone = trimmedPhone || existingUser.phone;
-      } else if (role === 'admin') {
-        roleUpdateData.phone = trimmedPhone || existingUser.phone;
-      } else if (role === 'society') {
-        roleUpdateData.studentId = trimmedStudentId || existingUser.studentId;
-        roleUpdateData.societyName = societyName || existingUser.societyName;
-        roleUpdateData.societyRole = societyRole || existingUser.societyRole;
-        roleUpdateData.year = year || existingUser.year;
-      }
-
-      const updatedUser = await prisma.user.update({
-        where: { email: normalizedEmail },
-        data: roleUpdateData
-      });
-
-      return sendTokenResponse(updatedUser, 200, res);
-    }
-    
     // Hash password
     const hashedPassword = await hashPassword(password);
-    
-    // Create user object based on role
+
     const userData = {
       name: name.trim(),
       email: normalizedEmail,
       password: hashedPassword,
       phone: trimmedPhone || null,
-      roles: [role]
+      roles: [requestedRole],
     };
-    
-    // Add role-specific fields
-    if (role === 'student') {
+
+    if (requestedRole === 'student') {
       userData.studentId = trimmedStudentId;
       userData.program = program;
       userData.year = year;
-    } else if (role === 'society') {
-      userData.studentId = trimmedStudentId || null;
-      userData.societyName = societyName;
-      userData.societyRole = societyRole;
-      userData.year = year;
     }
-    // Admin role doesn't need additional fields beyond name, email, password, phone
-    
+
     // Create user
     const user = await prisma.user.create({
       data: userData
@@ -170,7 +229,7 @@ exports.register = async (req, res) => {
       const field = error.meta?.target?.[0] || 'field';
       return res.status(400).json({
         success: false,
-        message: `This ${field} is already registered. If you have an account with a different role, please use a different ${field}.`
+        message: `This ${field} is already registered.`
       });
     }
     
@@ -581,6 +640,123 @@ exports.closeUserAccount = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Server error while closing account',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
+  }
+};
+
+// @desc    Assign elevated role to a student account
+// @route   PUT /api/auth/users/:id/assign-role
+// @access  Private/Admin
+exports.assignUserRole = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const requestedRole = typeof req.body.role === 'string' ? req.body.role.trim().toLowerCase() : '';
+    const societyName = typeof req.body.societyName === 'string' ? req.body.societyName.trim() : '';
+    const societyRole = typeof req.body.societyRole === 'string' ? req.body.societyRole.trim() : '';
+
+    if (!['admin', 'society'].includes(requestedRole)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Only admin or society roles can be assigned',
+      });
+    }
+
+    if (req.user.id === id) {
+      return res.status(400).json({
+        success: false,
+        message: 'You cannot change your own role assignment from this action',
+      });
+    }
+
+    const target = await prisma.user.findUnique({ where: { id } });
+    if (!target) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    if (!target.isActive) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot assign role to a closed account',
+      });
+    }
+
+    const targetRoles = Array.isArray(target.roles) ? target.roles : [];
+    if (!targetRoles.includes('student')) {
+      return res.status(400).json({
+        success: false,
+        message: 'Only student accounts can be promoted',
+      });
+    }
+
+    if (targetRoles.includes(requestedRole)) {
+      return res.status(400).json({
+        success: false,
+        message: `User already has the ${requestedRole} role`,
+      });
+    }
+
+    const updateData = {
+      roles: { push: requestedRole },
+    };
+
+    if (requestedRole === 'society') {
+      if (societyName) updateData.societyName = societyName;
+      if (societyRole) updateData.societyRole = societyRole;
+    }
+
+    const user = await prisma.user.update({
+      where: { id },
+      data: updateData,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        roles: true,
+        studentId: true,
+        societyName: true,
+        societyRole: true,
+        year: true,
+        isActive: true,
+      },
+    });
+
+    createAuditLog({
+      action: 'user_role_assigned',
+      module: 'user_management',
+      description: `Assigned ${requestedRole} role to ${target.name} (${target.email})`,
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      actorName: req.user.name,
+      actorRole: 'admin',
+      resourceId: target.id,
+      resourceType: 'User',
+      resourceName: target.name,
+      previousValue: (target.roles || []).join(','),
+      newValue: (user.roles || []).join(','),
+      metadata: {
+        targetUserId: target.id,
+        assignedRole: requestedRole,
+        societyName: user.societyName,
+        societyRole: user.societyRole,
+        assignedAt: new Date().toISOString(),
+      },
+    }).catch((err) => console.error('Audit log error:', err));
+
+    res.status(200).json({
+      success: true,
+      message: `Role assigned successfully: ${requestedRole}`,
+      user,
+    });
+  } catch (error) {
+    console.error('Assign user role error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while assigning role',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }

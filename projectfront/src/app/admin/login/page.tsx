@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { getRedirectPath, login } from "@/lib/auth";
+import { Button } from "@/components/ui/button";
 
 // The unified login at /login handles all roles.
 // This page redirects there so old links still work.
-export default function AdminLoginRedirect() {
+export function AdminLoginRedirect() {
   const router = useRouter();
   useEffect(() => {
     router.replace("/login");

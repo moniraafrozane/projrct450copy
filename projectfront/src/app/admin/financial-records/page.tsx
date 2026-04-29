@@ -86,12 +86,49 @@ export default function FinancialRecordsPage() {
       try {
         setLoading(true);
         setError("");
-        const [voucherRes, reportRes] = await Promise.all([
-          voucherAPI.getVouchers({ status: "submitted" }),
+        const [voucherRes, reportRes] = await Promise.allSettled([
+          voucherAPI.getVouchers(),
           postEventAPI.getAllReports({ status: "submitted" }),
         ]);
-        setVouchers(voucherRes.vouchers || []);
-        setReports(reportRes.reports || []);
+
+        if (voucherRes.status === "fulfilled") {
+          const pendingVouchers = (voucherRes.value.vouchers || []).filter(
+            (voucher) => voucher.status === "submitted" || voucher.status === "under_review"
+          );
+          setVouchers(pendingVouchers);
+        } else {
+          setVouchers([]);
+        }
+
+        if (reportRes.status === "fulfilled") {
+          setReports(reportRes.value.reports || []);
+        } else {
+          setReports([]);
+        }
+
+        if (voucherRes.status === "rejected" && reportRes.status === "rejected") {
+          const voucherMessage =
+            (voucherRes.reason as any)?.response?.data?.message ||
+            (voucherRes.reason as Error)?.message ||
+            "Failed to load vouchers";
+          const reportMessage =
+            (reportRes.reason as any)?.response?.data?.message ||
+            (reportRes.reason as Error)?.message ||
+            "Failed to load reports";
+          setError(`${voucherMessage}. ${reportMessage}.`);
+        } else if (voucherRes.status === "rejected") {
+          const voucherMessage =
+            (voucherRes.reason as any)?.response?.data?.message ||
+            (voucherRes.reason as Error)?.message ||
+            "Failed to load vouchers";
+          setError(voucherMessage);
+        } else if (reportRes.status === "rejected") {
+          const reportMessage =
+            (reportRes.reason as any)?.response?.data?.message ||
+            (reportRes.reason as Error)?.message ||
+            "Failed to load reports";
+          setError(reportMessage);
+        }
       } catch (loadError: any) {
         setError(loadError.response?.data?.message || "Failed to load financial records");
       } finally {
@@ -125,10 +162,10 @@ export default function FinancialRecordsPage() {
     <div className="space-y-10">
       <PageHeader
         title="Financial records"
-        description="View submitted expense vouchers and submitted post-event reports for admin visibility."
+        description="View submitted and under-review expense vouchers with submitted post-event reports."
       />
 
-      <SectionCard title="Ledger" description="Search submitted records by event name, type, or organizer.">
+      <SectionCard title="Ledger" description="Search pending expense and report records by event name, type, or organizer.">
         <div className="flex flex-wrap gap-4">
           <input
             value={search}
@@ -137,7 +174,7 @@ export default function FinancialRecordsPage() {
             className="min-w-[220px] flex-1 rounded-2xl border border-border/70 bg-background px-4 py-3 text-sm"
           />
           <Button variant="outline" disabled>
-            Submitted records only
+            Pending records only
           </Button>
         </div>
 
@@ -148,9 +185,9 @@ export default function FinancialRecordsPage() {
         )}
 
         {loading ? (
-          <p className="mt-4 text-sm text-muted-foreground">Loading submitted records...</p>
+          <p className="mt-4 text-sm text-muted-foreground">Loading pending records...</p>
         ) : filteredRecords.length === 0 ? (
-          <p className="mt-4 text-sm text-muted-foreground">No submitted records available.</p>
+          <p className="mt-4 text-sm text-muted-foreground">No pending records available.</p>
         ) : (
           <div className="mt-4 overflow-hidden rounded-2xl border border-border/70">
             <table className="w-full text-sm">

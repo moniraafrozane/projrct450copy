@@ -6,7 +6,6 @@ import ProtectedRoute from "@/components/auth/ProtectedRoute";
 const links = [
   { href: "/admin", label: "Dashboard" },
   { href: "/admin/committee", label: "Committee" },
-  { href: "/admin/documents", label: "Documents" },
   { href: "/admin/financial-records", label: "Financial Records" },
   { href: "/admin/student-affairs", label: "Student Affairs" },
   { href: "/admin/reports", label: "Reports" },
@@ -26,7 +25,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             <div>
               <h1 className="text-2xl font-semibold text-foreground">Admin Command Center</h1>
               <p className="text-sm text-muted-foreground">
-                Govern applications, budgets, documents, accounts, and analytics with full auditability.
+                Govern applications, budgets, accounts, and analytics with full auditability.
               </p>
             </div>
             <ModuleNav items={links} />

@@ -12,7 +12,7 @@ export default function SignupChoicePage() {
         <PageHeader
           eyebrow="Get Started"
           title="Select Your Role"
-          description=""
+          description="Choose a role to continue. Society member access is assigned by admin."
           actions={[
             { label: "Already have an account?", href: "/login", variant: "secondary" },
             { label: "Return home", href: "/", variant: "outline" },
@@ -20,38 +20,35 @@ export default function SignupChoicePage() {
         />
 
         <div className="mt-10 grid gap-6 md:grid-cols-3">
-          {/* Student Registration */}
           <SectionCard
             title="Student"
-            description=""
+            description="Create a student account directly."
           >
-            <Link href="/register">
+            <Link href="/register?role=student">
               <Button className="w-full">
                 Register as Student
               </Button>
             </Link>
           </SectionCard>
 
-          {/* Admin Registration */}
           <SectionCard
-            title="Admin"
-            description=""
+            title="Society Member"
+            description="Continue to society signup instructions."
           >
-            <Link href="/admin/register">
-              <Button className="w-full" variant="secondary">
-                Register as Admin
+            <Link href="/register?role=society">
+              <Button className="w-full" variant="outline">
+                Continue as Society Member
               </Button>
             </Link>
           </SectionCard>
 
-          {/* Society Member Registration */}
           <SectionCard
-            title="Society Member"
-            description=""
+            title="Admin"
+            description="Create an admin account with phone verification details."
           >
-            <Link href="/society-member/register">
-              <Button className="w-full" variant="outline">
-                Register as Society Member
+            <Link href="/register?role=admin">
+              <Button className="w-full" variant="secondary">
+                Register as Admin
               </Button>
             </Link>
           </SectionCard>

@@ -23,6 +23,7 @@ export default function VouchersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionMessage, setActionMessage] = useState("");
+  const [forwardingEventId, setForwardingEventId] = useState<string | null>(null);
 
   useEffect(() => {
     if (searchParams.get("saved") !== "1") return;
@@ -65,6 +66,82 @@ export default function VouchersPage() {
     return Array.from(map.values());
   }, [vouchers]);
 
+  const forwardEventVouchers = async (group: EventGroup) => {
+    const forwardableVouchers = group.vouchers.filter(
+      (v) => v.status === "draft" || v.status === "submitted"
+    );
+    if (forwardableVouchers.length === 0) return;
+
+    try {
+      setForwardingEventId(group.eventId);
+      setError("");
+      setActionMessage("");
+
+      const results = await Promise.allSettled(
+        forwardableVouchers.map(async (voucher) => {
+          if (voucher.status === "draft") {
+            await voucherAPI.submitVoucher(voucher.id);
+          }
+          const forwardRes = await voucherAPI.forwardVoucher(voucher.id);
+          return {
+            voucherId: voucher.id,
+            status: forwardRes.voucher?.status || "under_review",
+          };
+        })
+      );
+
+      let successCount = 0;
+      let failureCount = 0;
+      let firstFailureMessage = "";
+      const statusByVoucherId = new Map<string, Voucher["status"]>();
+
+      results.forEach((result) => {
+        if (result.status === "fulfilled") {
+          successCount += 1;
+          statusByVoucherId.set(result.value.voucherId, result.value.status);
+          return;
+        }
+
+        failureCount += 1;
+        if (!firstFailureMessage) {
+          firstFailureMessage =
+            (result.reason as any)?.response?.data?.message ||
+            (result.reason as Error)?.message ||
+            "Failed to forward one or more vouchers";
+        }
+      });
+
+      if (successCount > 0) {
+        setVouchers((prev) =>
+          prev.map((voucher) => {
+            const nextStatus = statusByVoucherId.get(voucher.id);
+            if (!nextStatus) return voucher;
+            return { ...voucher, status: nextStatus };
+          })
+        );
+      }
+
+      if (failureCount === 0) {
+        setActionMessage(
+          `Forwarded ${successCount} voucher${successCount !== 1 ? "s" : ""} to admin review`
+        );
+        return;
+      }
+
+      setError(
+        firstFailureMessage ||
+          `Forwarded ${successCount} of ${forwardableVouchers.length} vouchers. ${failureCount} failed.`
+      );
+      if (successCount > 0) {
+        setActionMessage(
+          `Forwarded ${successCount} of ${forwardableVouchers.length} vouchers to admin review`
+        );
+      }
+    } finally {
+      setForwardingEventId(null);
+    }
+  };
+
   return (
     <div className="space-y-10">
       <PageHeader
@@ -94,6 +171,8 @@ export default function VouchersPage() {
             {eventGroups.map((group) => {
               const total = group.vouchers.reduce((sum, v) => sum + v.amount, 0);
               const draftCount = group.vouchers.filter((v) => v.status === "draft").length;
+              const submittedCount = group.vouchers.filter((v) => v.status === "submitted").length;
+              const forwardableCount = draftCount + submittedCount;
               const dateLabel = group.eventDate
                 ? new Date(group.eventDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
                 : "";
@@ -111,10 +190,25 @@ export default function VouchersPage() {
                         {draftCount > 0 && (
                           <span className="text-amber-600">{draftCount} draft{draftCount !== 1 ? "s" : ""}</span>
                         )}
+                        {submittedCount > 0 && (
+                          <span className="text-blue-600">{submittedCount} submitted{submittedCount !== 1 ? "s" : ""}</span>
+                        )}
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-2">
                       <p className="text-sm font-semibold text-foreground">Total: BDT {total.toLocaleString()}</p>
+                      {forwardableCount > 0 && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => forwardEventVouchers(group)}
+                          disabled={forwardingEventId === group.eventId}
+                        >
+                          {forwardingEventId === group.eventId
+                            ? "Forwarding..."
+                            : `Forward to admin (${forwardableCount})`}
+                        </Button>
+                      )}
                       <Button size="sm" asChild>
                         <Link href={`/society/vouchers/events/${group.eventId}`}>
                           View Expenses →

@@ -169,10 +169,38 @@ exports.getCommitteeById = async (req, res) => {
 exports.updateCommittee = async (req, res) => {
   try {
     const { name, termStart, termEnd } = req.body;
+
+    const existingCommittee = await prisma.committee.findUnique({
+      where: { id: req.params.id },
+    });
+
+    if (!existingCommittee) {
+      return res.status(404).json({ success: false, message: 'Committee not found' });
+    }
+
     const data = {};
-    if (name) data.name = name;
-    if (termStart) data.termStart = new Date(termStart);
-    if (termEnd) data.termEnd = new Date(termEnd);
+
+    if (typeof name === 'string') {
+      const trimmedName = name.trim();
+      if (!trimmedName) {
+        return res.status(400).json({ success: false, message: 'Committee name cannot be empty' });
+      }
+      data.name = trimmedName;
+    }
+
+    const nextTermStart = termStart ? new Date(termStart) : existingCommittee.termStart;
+    const nextTermEnd = termEnd ? new Date(termEnd) : existingCommittee.termEnd;
+
+    if (Number.isNaN(nextTermStart.getTime()) || Number.isNaN(nextTermEnd.getTime())) {
+      return res.status(400).json({ success: false, message: 'Invalid termStart or termEnd date' });
+    }
+
+    if (nextTermEnd <= nextTermStart) {
+      return res.status(400).json({ success: false, message: 'termEnd must be after termStart' });
+    }
+
+    if (termStart) data.termStart = nextTermStart;
+    if (termEnd) data.termEnd = nextTermEnd;
 
     const committee = await prisma.committee.update({
       where: { id: req.params.id },
@@ -188,10 +216,69 @@ exports.updateCommittee = async (req, res) => {
       },
     });
 
+    createAuditLog({
+      action: 'committee_updated',
+      module: 'committee',
+      description: `Committee updated: ${committee.name}`,
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      actorName: req.user.name,
+      actorRole: 'admin',
+      resourceId: committee.id,
+      resourceType: 'Committee',
+      resourceName: committee.name,
+      metadata: {
+        termStart: committee.termStart,
+        termEnd: committee.termEnd,
+      },
+      ipAddress: req.ip,
+    }).catch((err) => console.error('Audit log error:', err));
+
     res.json({ success: true, message: 'Committee updated', committee });
   } catch (error) {
     console.error('Update committee error:', error);
     res.status(500).json({ success: false, message: 'Server error updating committee' });
+  }
+};
+
+// ─── DELETE COMMITTEE ───────────────────────────────────────────────
+exports.deleteCommittee = async (req, res) => {
+  try {
+    const committee = await prisma.committee.findUnique({
+      where: { id: req.params.id },
+      include: { _count: { select: { members: true } } },
+    });
+
+    if (!committee) {
+      return res.status(404).json({ success: false, message: 'Committee not found' });
+    }
+
+    await prisma.committee.delete({ where: { id: req.params.id } });
+
+    createAuditLog({
+      action: 'committee_deleted',
+      module: 'committee',
+      description: `Committee deleted: ${committee.name}`,
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      actorName: req.user.name,
+      actorRole: 'admin',
+      resourceId: committee.id,
+      resourceType: 'Committee',
+      resourceName: committee.name,
+      metadata: {
+        membersRemoved: committee._count.members,
+        wasActive: committee.isActive,
+        termStart: committee.termStart,
+        termEnd: committee.termEnd,
+      },
+      ipAddress: req.ip,
+    }).catch((err) => console.error('Audit log error:', err));
+
+    res.json({ success: true, message: 'Committee deleted successfully' });
+  } catch (error) {
+    console.error('Delete committee error:', error);
+    res.status(500).json({ success: false, message: 'Server error deleting committee' });
   }
 };
 

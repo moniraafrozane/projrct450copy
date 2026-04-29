@@ -7,6 +7,7 @@ const {
   getActiveCommittee,
   getCommitteeById,
   updateCommittee,
+  deleteCommittee,
   addMember,
   removeMember,
   updateMemberRole,
@@ -21,6 +22,7 @@ router.get('/:id', protect, getCommitteeById);
 // Admin-only mutations
 router.post('/', protect, authorize('admin'), createCommittee);
 router.put('/:id', protect, authorize('admin'), updateCommittee);
+router.delete('/:id', protect, authorize('admin'), deleteCommittee);
 router.put('/:id/deactivate', protect, authorize('admin'), deactivateCommittee);
 
 // Member management (admin-only)

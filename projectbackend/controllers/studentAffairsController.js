@@ -18,6 +18,62 @@ function isAllowedReceiptMime(mimeType) {
   return ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'].includes(String(mimeType || '').toLowerCase());
 }
 
+async function notifyStudentReceiptAccepted({ receipt, actor }) {
+  if (!receipt?.studentId || !receipt?.id || !actor?.id || receipt.studentId === actor.id) {
+    return;
+  }
+
+  const recipient = await prisma.user.findFirst({
+    where: {
+      id: receipt.studentId,
+      isActive: true,
+      roles: { has: 'student' },
+    },
+    select: { id: true },
+  });
+
+  if (!recipient) {
+    return;
+  }
+
+  const baseData = {
+    recipientId: recipient.id,
+    actorId: actor.id,
+    title: 'Receipt accepted',
+    message: `Your bank receipt (${receipt.payment?.reference || 'reference unavailable'}) has been accepted by admin.`,
+    metadata: {
+      notificationCategory: 'receipt_accepted',
+      receiptId: receipt.id,
+      paymentId: receipt.paymentId,
+      reference: receipt.payment?.reference || null,
+      amount: receipt.payment?.amount || null,
+    },
+  };
+
+  try {
+    await prisma.notification.create({
+      data: {
+        ...baseData,
+        type: 'receipt_accepted',
+      },
+    });
+  } catch (error) {
+    const details = String(error?.message || '');
+    const enumUnavailable = details.includes('receipt_accepted') || details.includes('NotificationType');
+    if (!enumUnavailable) {
+      throw error;
+    }
+
+    // Fallback for environments where NotificationType enum migration is not applied yet.
+    await prisma.notification.create({
+      data: {
+        ...baseData,
+        type: 'event_updated',
+      },
+    });
+  }
+}
+
 exports.createReceipt = async (req, res) => {
   try {
     const { reference, paymentDate, amount, notes, fileUrl, fileName, mimeType } = req.body;
@@ -355,6 +411,13 @@ exports.reviewReceipt = async (req, res) => {
         },
       });
     });
+
+    if (shouldAccept) {
+      notifyStudentReceiptAccepted({
+        receipt: updated,
+        actor: req.user,
+      }).catch((err) => console.error('Receipt accepted notification error:', err));
+    }
 
     return res.json({
       success: true,
