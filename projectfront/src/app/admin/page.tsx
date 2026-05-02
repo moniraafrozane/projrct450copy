@@ -55,6 +55,10 @@ export default function AdminDashboardPage() {
   const [applications, setApplications] = useState<SocietyApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [loadingActionId, setLoadingActionId] = useState<string | null>(null);
+  const [noteById, setNoteById] = useState<Record<string, string>>({});
   const [users, setUsers] = useState<UserListItem[]>([]);
   const [usersLoading, setUsersLoading] = useState(true);
   const [usersError, setUsersError] = useState("");
@@ -106,7 +110,12 @@ export default function AdminDashboardPage() {
   );
 
   const budgetApplications = useMemo(
-    () => applications.filter((app) => app.type === "fund_withdrawal" || app.type === "budget_breakdown"),
+    () => applications.filter((app) => app.type === "fund_withdrawal"),
+    [applications]
+  );
+
+  const additionalBudgetApplications = useMemo(
+    () => applications.filter((app) => app.type === "budget_breakdown"),
     [applications]
   );
 
@@ -119,6 +128,54 @@ export default function AdminDashboardPage() {
     () => users.filter((u) => u.roles.includes("society")),
     [users]
   );
+
+  const syncApplication = (updated: SocietyApplication) => {
+    setApplications((prev) => prev.map((app) => (app.id === updated.id ? updated : app)));
+  };
+
+  const handleApprove = async (id: string) => {
+    setLoadingActionId(id);
+    setActionMessage("");
+    setActionError("");
+
+    try {
+      const res = await applicationAPI.approveApplication(id);
+      syncApplication(res.application);
+      setActionMessage("Application approved successfully.");
+    } catch (error: any) {
+      setActionError(
+        error?.response?.data?.message || "Failed to approve application. Please try again."
+      );
+    } finally {
+      setLoadingActionId(null);
+    }
+  };
+
+  const handleReturn = async (id: string) => {
+    const note = (noteById[id] ?? "").trim();
+    if (!note) {
+      setActionError("Admin note is required to return an application.");
+      setActionMessage("");
+      return;
+    }
+
+    setLoadingActionId(id);
+    setActionMessage("");
+    setActionError("");
+
+    try {
+      const res = await applicationAPI.returnApplication(id, note);
+      syncApplication(res.application);
+      setActionMessage("Application returned to society member.");
+      setNoteById((prev) => ({ ...prev, [id]: "" }));
+    } catch (error: any) {
+      setActionError(
+        error?.response?.data?.message || "Failed to return application. Please try again."
+      );
+    } finally {
+      setLoadingActionId(null);
+    }
+  };
 
   const handleCloseAccount = async () => {
     if (!selectedUser) return;
@@ -264,6 +321,7 @@ export default function AdminDashboardPage() {
 
   const renderApplicationCard = (app: SocietyApplication) => {
     const status = STATUS_META[app.status] ?? STATUS_META.submitted;
+    const canReview = app.status === "submitted" || app.status === "under_review";
     const pdfViewSupported = app.type === "fund_withdrawal" || app.type === "event_approval";
 
     return (
@@ -288,16 +346,42 @@ export default function AdminDashboardPage() {
           </div>
         )}
 
-        <div className="mt-4 flex gap-2">
-          <Button className="flex-1" size="sm" variant="outline" asChild>
-            <a
-              href={pdfViewSupported ? `/admin/applications/${app.id}/pdf` : `/admin/applications/${app.id}`}
-              target="_blank"
-              rel="noopener noreferrer"
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <textarea
+            className="w-full rounded-2xl border border-border/70 bg-background px-4 py-3 text-sm"
+            placeholder="Add note before returning application"
+            value={noteById[app.id] ?? ""}
+            onChange={(e) => setNoteById((prev) => ({ ...prev, [app.id]: e.target.value }))}
+            disabled={!canReview || loadingActionId === app.id}
+          />
+          <div className="flex gap-2">
+            <Button className="flex-1" size="sm" variant="outline" asChild>
+              <a
+                href={pdfViewSupported ? `/admin/applications/${app.id}/pdf` : `/admin/applications/${app.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                View
+              </a>
+            </Button>
+            <Button
+              className="flex-1"
+              size="sm"
+              onClick={() => handleApprove(app.id)}
+              disabled={!canReview || loadingActionId === app.id}
             >
-              View
-            </a>
-          </Button>
+              {loadingActionId === app.id ? "Processing..." : "Approve"}
+            </Button>
+            <Button
+              className="flex-1"
+              size="sm"
+              variant="outline"
+              onClick={() => handleReturn(app.id)}
+              disabled={!canReview || loadingActionId === app.id}
+            >
+              {loadingActionId === app.id ? "Processing..." : "Reject / Return"}
+            </Button>
+          </div>
         </div>
       </div>
     );
@@ -305,6 +389,17 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="space-y-10">
+      {actionMessage && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          {actionMessage}
+        </div>
+      )}
+
+      {actionError && (
+        <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {actionError}
+        </div>
+      )}
 
       <SectionCard
         title="Sign-in oversight & approvals"
@@ -322,8 +417,8 @@ export default function AdminDashboardPage() {
       </SectionCard>
 
       <SectionCard
-        title="Budget governance"
-        description="All budget applications are reviewed here."
+        title="Fund withdrawal"
+        description="Fund withdrawal applications are reviewed here."
       >
         {loading ? (
           <p className="text-sm text-muted-foreground">Loading applications...</p>
@@ -333,6 +428,21 @@ export default function AdminDashboardPage() {
           <p className="text-sm text-muted-foreground">No budget applications found.</p>
         ) : (
           <div className="space-y-4">{budgetApplications.map((app) => renderApplicationCard(app))}</div>
+        )}
+      </SectionCard>
+
+      <SectionCard
+        title="Additional Budget"
+        description="Budget increase requests from societies are reviewed here."
+      >
+        {loading ? (
+          <p className="text-sm text-muted-foreground">Loading applications...</p>
+        ) : error ? (
+          <p className="text-sm text-destructive">{error}</p>
+        ) : additionalBudgetApplications.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No additional budget applications found.</p>
+        ) : (
+          <div className="space-y-4">{additionalBudgetApplications.map((app) => renderApplicationCard(app))}</div>
         )}
       </SectionCard>
 

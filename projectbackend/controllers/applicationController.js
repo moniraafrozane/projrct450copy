@@ -58,7 +58,7 @@ const validateBudgetSections = (sections) => {
   return null;
 };
 
-const PDF_SUPPORTED_TYPES = new Set(['fund_withdrawal', 'event_approval']);
+const PDF_SUPPORTED_TYPES = new Set(['fund_withdrawal', 'event_approval', 'resource_request', 'budget_breakdown']);
 
 const normalizeText = (value, fallback = '___________') => {
   if (value === null || value === undefined) {
@@ -88,6 +88,16 @@ const buildSubject = (applicationType, content) => {
     return `Application for withdrawal of allocated funds for ${title}`;
   }
 
+  if (applicationType === 'budget_breakdown') {
+    const title = normalizeText(content.eventTitle, 'the event');
+    return `Additional Budget Breakdown — Application for approval of additional budget for ${title}`;
+  }
+
+  if (applicationType === 'resource_request') {
+    const resourceType = normalizeText(content.resourceType, 'items');
+    return `Request for resource allocation – ${resourceType}`;
+  }
+
   const title = normalizeText(content.eventTitle, 'the proposed event');
   return `Application for approval of ${title}`;
 };
@@ -98,12 +108,33 @@ const buildPdfFilename = (application) => {
   return `${safeType}-${shortId || 'document'}.pdf`;
 };
 
-const ensurePdfSupportedType = (application) => {
-  if (!PDF_SUPPORTED_TYPES.has(application.type)) {
-    return false;
-  }
+const logApplicationPdfAccess = ({ application, actor, action, downloadMode, description }) => {
+  const actorRoles = Array.isArray(actor?.roles) ? actor.roles : [];
+  const actorRole = actorRoles.includes('admin') ? 'admin' : actorRoles.includes('society') ? 'society' : 'unknown';
 
-  return true;
+  createAuditLog({
+    action,
+    module: 'applications',
+    description,
+    actorId: actor?.id,
+    actorEmail: actor?.email,
+    actorName: actor?.name,
+    actorRole,
+    resourceId: application.id,
+    resourceType: 'SocietyApplication',
+    resourceName: application.subject,
+    previousValue: application.status,
+    newValue: downloadMode ? 'pdf_download' : 'pdf_view',
+    metadata: {
+      applicationType: application.type,
+      applicationStatus: application.status,
+      createdById: application.createdById,
+      createdByName: application.createdByName,
+      downloadMode,
+      accessedAt: new Date().toISOString(),
+    },
+    ipAddress: actor?.ipAddress,
+  }).catch((err) => console.error('Audit log error:', err));
 };
 
 const addFundWithdrawalBody = (doc, content) => {
@@ -166,6 +197,90 @@ const addEventApprovalBody = (doc, content) => {
   );
 };
 
+const addBudgetBreakdownBody = (doc, content) => {
+  const eventTitle = normalizeText(content.eventTitle, 'the event');
+  const reason = normalizeText(content.increasedRequirementsReason, '___________');
+  const requiredAmount = normalizeText(content.requiredAmount, '___________');
+
+  doc.text('Sir,', { align: 'left' });
+  doc.moveDown(0.8);
+
+  doc.text(
+    'With due respect, I would like to state that for the smooth execution of ongoing and upcoming activities of the CSE Society, additional budget is required beyond the initially allocated funds.',
+    { align: 'justify' }
+  );
+  doc.moveDown(0.8);
+
+  doc.text(
+    `The increased requirements are mainly due to ${reason} which are essential to maintain the quality and proper management of the ${eventTitle}.`,
+    { align: 'justify' }
+  );
+  doc.moveDown(0.8);
+
+  doc.text(`The required amount is ${requiredAmount} BDT.`, { align: 'justify' });
+  doc.moveDown(0.8);
+
+  doc.text(
+    'Therefore, I humbly request you to kindly consider and approve the additional budget allocation for the CSE Society activities.',
+    { align: 'justify' }
+  );
+  doc.moveDown(0.8);
+
+  doc.text('I would be highly grateful for your kind approval.', { align: 'justify' });
+};
+
+const addResourceRequestBody = (doc, content) => {
+  const resourceType = normalizeText(content.resourceType, '___________');
+  const quantity = normalizeText(content.quantity, '');
+  const purpose = normalizeText(content.purpose, '');
+  const duration = normalizeText(content.duration, '');
+  const eventReference = normalizeText(content.eventReference, '');
+
+  doc.text('Sir/Madam,', { align: 'left' });
+  doc.moveDown(0.8);
+
+  doc.text(
+    `With due respect, I would like to request the allocation of ${quantity ? `${quantity} unit(s) of ` : ''}${resourceType}${purpose ? ` for ${purpose}` : ''}${duration ? `, for a duration of ${duration}` : ''}${eventReference ? `, in relation to the event: ${eventReference}` : ''}.`,
+    { align: 'justify' }
+  );
+  doc.moveDown(0.8);
+
+  doc.text(
+    'I humbly request you to kindly arrange the said resource at your earliest convenience.',
+    { align: 'justify' }
+  );
+};
+
+const addGenericApplicationBody = (doc, application) => {
+  const content = application.content && typeof application.content === 'object' ? application.content : {};
+  const entries = Object.entries(content)
+    .filter(([, value]) => value !== null && value !== undefined && value !== '')
+    .slice(0, 12);
+
+  doc.text('Sir/Madam,', { align: 'left' });
+  doc.moveDown(0.8);
+
+  doc.text(
+    'With due respect, I am submitting this application for your kind consideration. The relevant details are summarized below:',
+    { align: 'justify' }
+  );
+  doc.moveDown(0.8);
+
+  if (entries.length === 0) {
+    doc.text('No additional application details were provided.', { align: 'justify' });
+    return;
+  }
+
+  entries.forEach(([key, value]) => {
+    const label = key
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
+      .replace(/[_-]+/g, ' ')
+      .replace(/^./, (char) => char.toUpperCase());
+
+    doc.text(`${label}: ${normalizeText(value)}`, { align: 'justify' });
+  });
+};
+
 const writeApplicationLetterPdf = (doc, application) => {
   const content = application.content && typeof application.content === 'object' ? application.content : {};
   const recipientTitle = normalizeText(content.recipientTitle, 'The President');
@@ -196,8 +311,14 @@ const writeApplicationLetterPdf = (doc, application) => {
 
   if (application.type === 'fund_withdrawal') {
     addFundWithdrawalBody(doc, content);
-  } else {
+  } else if (application.type === 'event_approval') {
     addEventApprovalBody(doc, content);
+  } else if (application.type === 'budget_breakdown') {
+    addBudgetBreakdownBody(doc, content);
+  } else if (application.type === 'resource_request') {
+    addResourceRequestBody(doc, content);
+  } else {
+    addGenericApplicationBody(doc, application);
   }
 
   doc.moveDown(1.2);
@@ -364,7 +485,7 @@ exports.createBudgetBreakdown = async (req, res) => {
     const application = await prisma.societyApplication.create({
       data: {
         type: BUDGET_TYPE,
-        subject: `Budget breakdown for ${event.title}`,
+        subject: `Additional Budget Breakdown — Application for approval of additional budget for ${event.title}`,
         content,
         createdById: req.user.id,
         createdByName: req.user.name,
@@ -732,15 +853,16 @@ exports.exportApplicationPdf = async (req, res) => {
       });
     }
 
-    if (!ensurePdfSupportedType(application)) {
-      return res.status(400).json({
-        success: false,
-        message: 'PDF export currently supports fund withdrawal and event approval applications only',
-      });
-    }
-
     const downloadMode = req.query.download === '1' || req.query.download === 'true';
     streamApplicationPdf(res, application, { downloadMode });
+
+    logApplicationPdfAccess({
+      application,
+      actor: req.user,
+      action: downloadMode ? 'application_pdf_downloaded' : 'application_pdf_viewed',
+      downloadMode,
+      description: `${req.user.name || req.user.email || 'User'} ${downloadMode ? 'downloaded' : 'viewed'} the application PDF for ${application.subject}`,
+    });
   } catch (error) {
     console.error('Export application PDF error:', error);
     res.status(500).json({
@@ -768,14 +890,15 @@ exports.printApplicationPdf = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Application not found' });
     }
 
-    if (!ensurePdfSupportedType(application)) {
-      return res.status(400).json({
-        success: false,
-        message: 'PDF print currently supports fund withdrawal and event approval applications only',
-      });
-    }
-
     streamApplicationPdf(res, application, { downloadMode: false });
+
+    logApplicationPdfAccess({
+      application,
+      actor: req.user,
+      action: 'application_pdf_printed',
+      downloadMode: false,
+      description: `${req.user.name || req.user.email || 'Admin'} printed the application PDF for ${application.subject}`,
+    });
   } catch (error) {
     console.error('Print application PDF error:', error);
     res.status(500).json({

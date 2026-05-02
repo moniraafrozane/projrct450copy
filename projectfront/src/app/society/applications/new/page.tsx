@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, Suspense } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/patterns/page-header';
 import { SectionCard } from '@/components/patterns/section-card';
@@ -8,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { applicationAPI, ApplicationType } from '@/lib/api';
+import { applicationAPI, eventAPI, ApplicationType } from '@/lib/api';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -57,7 +58,20 @@ type ResourceRequestContent = {
   phoneNumber: string;
 };
 
-type FormContent = FundWithdrawalContent | EventApprovalContent | ResourceRequestContent;
+type AdditionalBudgetContent = {
+  applicationDate: string;
+  recipientTitle: string;
+  throughTitle: string;
+  increasedRequirementsReason: string;
+  requiredAmount: string;
+  eventTitle: string;
+  applicantName: string;
+  applicantPosition: string;
+  registrationNumber: string;
+  phoneNumber: string;
+};
+
+type FormContent = FundWithdrawalContent | EventApprovalContent | ResourceRequestContent | AdditionalBudgetContent;
 
 // ─── Default values ───────────────────────────────────────────────────────────
 
@@ -108,7 +122,20 @@ const defaultResourceRequest: ResourceRequestContent = {
   phoneNumber: '',
 };
 
-const selectableApplicationTypes: ApplicationType[] = ['fund_withdrawal', 'event_approval'];
+const defaultAdditionalBudget: AdditionalBudgetContent = {
+  applicationDate: today,
+  recipientTitle: 'The President',
+  throughTitle: 'The Treasurer',
+  increasedRequirementsReason: '',
+  requiredAmount: '',
+  eventTitle: '',
+  applicantName: '',
+  applicantPosition: '',
+  registrationNumber: '',
+  phoneNumber: '',
+};
+
+const selectableApplicationTypes: ApplicationType[] = ['fund_withdrawal', 'event_approval', 'budget_breakdown'];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -129,7 +156,7 @@ function buildSubject(type: ApplicationType, content: Record<string, string>): s
   }
   if (type === 'budget_breakdown') {
     const title = content.eventTitle || 'the event';
-    return `Budget breakdown for ${title}`;
+    return `Additional Budget Breakdown — Application for approval of additional budget for ${title}`;
   }
   return `Request for resource allocation – ${content.resourceType || 'items'}`;
 }
@@ -214,6 +241,33 @@ function LetterPreview({
       );
     }
 
+    
+
+    if (type === 'budget_breakdown') {
+      return (
+        <>
+          <p className="mb-4">Sir,</p>
+          <p className="mb-4 text-justify">
+            With due respect, I would like to state that for the smooth execution of ongoing and upcoming activities of the CSE Society, additional budget is required beyond the initially allocated funds.
+          </p>
+
+          <p className="mb-4 text-justify">
+            The increased requirements are mainly due to <strong>{(content as Record<string, string>).increasedRequirementsReason || '___________'}</strong> (e.g. expansion of event scale / additional materials / unexpected expenses) which are essential to maintain the quality and proper management of the <strong>{(content as Record<string, string>).eventTitle || '___________'}</strong>.
+          </p>
+
+          <p className="mb-4 text-justify">
+            The required amount is <strong>{(content as Record<string, string>).requiredAmount ? `${(content as Record<string, string>).requiredAmount} BDT` : '___________ BDT'}</strong>.
+          </p>
+
+          <p className="mb-6 text-justify">
+            Therefore, I humbly request you to kindly consider and approve the additional budget allocation for the CSE Society activities.
+          </p>
+
+          <p className="mb-4">I would be highly grateful for your kind approval.</p>
+        </>
+      );
+    }
+
     // resource_request
     return (
       <>
@@ -233,8 +287,7 @@ function LetterPreview({
     );
   };
 
-  const hasThroughLine =
-    type === 'fund_withdrawal' && fw.throughTitle && fw.throughTitle !== 'None';
+  const hasThroughLine = Boolean((content as Record<string, string>).throughTitle && (content as Record<string, string>).throughTitle !== 'None');
 
   const renderAttachments = () => {
     if (type === 'fund_withdrawal' && fw.attachments) {
@@ -274,7 +327,7 @@ function LetterPreview({
       {/* Subject */}
       <p className="mb-6 font-bold underline">
         <strong>Subject:</strong>{' '}
-        {buildSubject(type, content as Record<string, string>)}.
+        {buildSubject(type, content as Record<string, string>)}
       </p>
 
       {/* Body */}
@@ -420,8 +473,10 @@ function GenerateApplicationPageInner() {
   const [saveMessage, setSaveMessage] = useState('');
   const [error, setError] = useState('');
   const [loadingDraft, setLoadingDraft] = useState(!!draftId);
+  const [upcomingEvents, setUpcomingEvents] = useState<Array<{ id: string; title: string }>>([]);
+  const [loadingEvents, setLoadingEvents] = useState(false);
 
-  const pdfDownloadSupported = type === 'fund_withdrawal' || type === 'event_approval';
+  const pdfDownloadSupported = type === 'fund_withdrawal' || type === 'event_approval' || type === 'budget_breakdown';
 
   // Load existing draft when ?draft= param is present
   useEffect(() => {
@@ -438,6 +493,27 @@ function GenerateApplicationPageInner() {
       .finally(() => setLoadingDraft(false));
   }, [draftId]);
 
+  // Fetch upcoming events for budget breakdown form
+  useEffect(() => {
+    const loadUpcomingEvents = async () => {
+      setLoadingEvents(true);
+      try {
+        const res = await eventAPI.getAllEvents({ status: 'upcoming', upcoming: true, limit: 200 });
+        const events = (res.events || []).map((event: any) => ({
+          id: event.id,
+          title: event.title,
+        }));
+        setUpcomingEvents(events);
+      } catch (err) {
+        console.error('Failed to load events:', err);
+      } finally {
+        setLoadingEvents(false);
+      }
+    };
+
+    loadUpcomingEvents();
+  }, []);
+
   // Switch type → reset content to defaults
   const handleTypeChange = (newType: ApplicationType) => {
     setType(newType);
@@ -446,7 +522,7 @@ function GenerateApplicationPageInner() {
     setError('');
     if (newType === 'fund_withdrawal') setContent(defaultFundWithdrawal);
     else if (newType === 'event_approval') setContent(defaultEventApproval);
-    else if (newType === 'budget_breakdown') setContent(defaultEventApproval);
+    else if (newType === 'budget_breakdown') setContent(defaultAdditionalBudget);
     else setContent(defaultResourceRequest);
   };
 
@@ -534,7 +610,7 @@ function GenerateApplicationPageInner() {
   // ── Download PDF ───────────────────────────────────────────────────
   const handleDownloadPdf = async () => {
     if (!pdfDownloadSupported) {
-      setError('PDF download is currently available for fund withdrawal and event approval only.');
+      setError('PDF download is currently available for fund withdrawal, event approval and additional budget applications.');
       return;
     }
 
@@ -737,6 +813,71 @@ function GenerateApplicationPageInner() {
       );
     }
 
+    if (type === 'budget_breakdown') {
+      return (
+        <div className="space-y-6">
+          <div className="grid gap-6 md:grid-cols-2">
+            <Field label="Application Date" name="applicationDate" type="date" required value={v('applicationDate')} onChange={handleFieldChange} />
+            <SelectField
+              label="Addressed To"
+              name="recipientTitle"
+              options={['The President', 'The Vice-President', 'The General Secretary', 'The Treasurer']}
+              required
+              value={v('recipientTitle')}
+              onChange={handleFieldChange}
+            />
+          </div>
+
+          <SelectField
+            label="Through (optional)"
+            name="throughTitle"
+            options={['None', 'The President', 'The Vice-President', 'The General Secretary', 'The Treasurer']}
+            value={v('throughTitle')}
+            onChange={handleFieldChange}
+          />
+
+          <TextAreaField
+            label="Increased requirements (reason)"
+            name="increasedRequirementsReason"
+            placeholder="e.g. expansion of event scale / additional materials / unexpected expenses"
+            rows={4}
+            value={v('increasedRequirementsReason')}
+            onChange={handleFieldChange}
+          />
+
+          <Field
+            label="Required ammount"
+            name="requiredAmount"
+            type="number"
+            placeholder="5000"
+            required
+            value={v('requiredAmount')}
+            onChange={handleFieldChange}
+          />
+
+          <SelectField
+            label="Related Event Title"
+            name="eventTitle"
+            options={loadingEvents ? ['Loading...'] : upcomingEvents.length > 0 ? upcomingEvents.map(e => e.title) : ['No upcoming events available']}
+            value={v('eventTitle')}
+            onChange={handleFieldChange}
+          />
+
+          <div className="border-t border-border/50 pt-6">
+            <p className="mb-4 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Applicant Info
+            </p>
+            <div className="grid gap-6 md:grid-cols-2">
+              <Field label="Your Name" name="applicantName" placeholder="Imran Bin Azad" required value={v('applicantName')} onChange={handleFieldChange} />
+              <Field label="Position" name="applicantPosition" placeholder="Member" required value={v('applicantPosition')} onChange={handleFieldChange} />
+              <Field label="Registration Number" name="registrationNumber" placeholder="2020331101" value={v('registrationNumber')} onChange={handleFieldChange} />
+              <Field label="Phone Number" name="phoneNumber" placeholder="01567893310" value={v('phoneNumber')} onChange={handleFieldChange} />
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     // resource_request
     return (
       <div className="space-y-6">
@@ -782,7 +923,7 @@ function GenerateApplicationPageInner() {
     fund_withdrawal: 'Fund Withdrawal',
     event_approval: 'Event Approval',
     resource_request: 'Resource Request',
-    budget_breakdown: 'Budget Breakdown',
+    budget_breakdown: 'Additional budget',
   };
 
   return (
@@ -821,6 +962,7 @@ function GenerateApplicationPageInner() {
               </button>
             )
           )}
+          {/* Additional Budget button removed per request */}
         </div>
       </SectionCard>
 

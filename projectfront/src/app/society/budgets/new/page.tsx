@@ -41,6 +41,8 @@ export default function NewBudgetPage() {
   const [newCategoryTitle, setNewCategoryTitle] = useState("");
   const [newCategoryAmount, setNewCategoryAmount] = useState("");
   const [addCategoryError, setAddCategoryError] = useState("");
+  const [creatingApplication, setCreatingApplication] = useState(false);
+  const [justification, setJustification] = useState("");
 
   useEffect(() => {
     const loadUpcomingEvents = async () => {
@@ -243,7 +245,7 @@ export default function NewBudgetPage() {
 
         const response = await applicationAPI.updateApplication(editId, {
           type: "budget_breakdown",
-          subject: `Budget breakdown - ${subjectEvent}`,
+          subject: `Additional Budget Breakdown — Application for approval of additional budget for ${subjectEvent}`,
           content: {
             eventId,
             eventTitle: selectedEvent?.title || fallbackContent.eventTitle || "Untitled Event",
@@ -280,6 +282,72 @@ export default function NewBudgetPage() {
       setSaving(false);
     }
   };
+
+    const handleCreateApplication = async () => {
+      setError("");
+      setMessage("");
+
+      if (!eventId) {
+        setError("Please select an upcoming event");
+        return;
+      }
+
+      if (categories.length === 0) {
+        setError("Add at least one budget category");
+        return;
+      }
+
+      const hasPositive = categories.some((cat) => Number(cat.amount) > 0);
+      if (!hasPositive) {
+        setError("Enter an amount greater than 0 for at least one category");
+        return;
+      }
+
+      try {
+        setCreatingApplication(true);
+
+        const sections = categories.map((cat) => ({
+          title: cat.title,
+          amount: cat.amount,
+          key: `cat-${cat.id}`,
+          helper: "",
+          notes: "",
+          optional: false,
+        }));
+
+        const subjectEvent =
+          selectedEvent?.title || (existingBudget?.content as any)?.eventTitle || "Untitled Event";
+
+        const fallbackContent = (existingBudget?.content || {}) as Partial<BudgetBreakdownContent>;
+
+        const response = await applicationAPI.createApplication({
+          type: "budget_breakdown",
+          subject: `Additional Budget Breakdown — Application for approval of additional budget for ${subjectEvent}`,
+          content: {
+            eventId,
+            eventTitle: selectedEvent?.title || fallbackContent.eventTitle || "Untitled Event",
+            eventDate: selectedEvent?.eventDate || fallbackContent.eventDate || "",
+            eventStartTime: selectedEvent?.startTime || fallbackContent.eventStartTime || "",
+            eventVenue: selectedEvent?.venue || fallbackContent.eventVenue || "",
+            organizerName: selectedEvent?.organizerName || fallbackContent.organizerName || "",
+            sections,
+            justification,
+            calculatedTotal,
+            overrideAmount: null,
+            totalAmount,
+          },
+        });
+
+        setMessage(response.message || "application created successfully");
+        setTimeout(() => {
+          router.push("/society/budgets");
+        }, 1200);
+      } catch (createError: any) {
+        setError(createError.response?.data?.message || "Failed to create application");
+      } finally {
+        setCreatingApplication(false);
+      }
+    };
 
   return (
     <div className="space-y-10">
@@ -480,20 +548,38 @@ export default function NewBudgetPage() {
             <Input value={String(totalAmount)} readOnly />
           </label>
         </div>
-        <div className="mt-4 flex flex-wrap gap-3">
-          <Button
-            onClick={handleSave}
-            disabled={saving || loadingEvents || loadingExisting}
-          >
-            {saving ? "Saving..." : isEditMode ? "Update budget" : "Save budget draft"}
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => router.push("/society/budgets")}
-            disabled={saving || loadingExisting}
-          >
-            Cancel
-          </Button>
+        <div className="mt-4">
+          <label className="flex flex-col gap-2 text-sm mb-3">
+            Justification for additional budget
+            <Textarea
+              value={justification}
+              onChange={(e) => setJustification(e.target.value)}
+              disabled={creatingApplication || saving || loadingExisting || loadingEvents}
+              className="min-h-[120px]"
+              placeholder="Explain why additional funds are needed and how they'll be used."
+            />
+          </label>
+          <div className="flex flex-wrap gap-3">
+            <Button
+              onClick={handleCreateApplication}
+              disabled={creatingApplication || saving || loadingEvents || loadingExisting}
+            >
+              {creatingApplication ? "Creating..." : "Create application letter"}
+            </Button>
+            <Button
+              onClick={handleSave}
+              disabled={saving || loadingEvents || loadingExisting}
+            >
+              {saving ? "Saving..." : isEditMode ? "Update budget" : "Save budget draft"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => router.push("/society/budgets")}
+              disabled={creatingApplication || saving || loadingExisting}
+            >
+              Cancel
+            </Button>
+          </div>
         </div>
       </SectionCard>
     </div>
