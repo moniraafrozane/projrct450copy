@@ -58,6 +58,17 @@ const validateBudgetSections = (sections) => {
   return null;
 };
 
+const isAdditionalBudgetLetterContent = (content) =>
+  Boolean(
+    content &&
+      typeof content === 'object' &&
+      (
+        Object.prototype.hasOwnProperty.call(content, 'requiredAmount') ||
+        Object.prototype.hasOwnProperty.call(content, 'increasedRequirementsReason') ||
+        Object.prototype.hasOwnProperty.call(content, 'throughTitle')
+      )
+  );
+
 const PDF_SUPPORTED_TYPES = new Set(['fund_withdrawal', 'event_approval', 'resource_request', 'budget_breakdown']);
 
 const normalizeText = (value, fallback = '___________') => {
@@ -94,6 +105,11 @@ const buildSubject = (applicationType, content) => {
   }
 
   if (applicationType === 'resource_request') {
+    if (isAdditionalBudgetLetterContent(content)) {
+      const title = normalizeText(content.eventTitle, 'the event');
+      return `Application for approval of additional budget for ${title}`;
+    }
+
     const resourceType = normalizeText(content.resourceType, 'items');
     return `Request for resource allocation – ${resourceType}`;
   }
@@ -230,6 +246,39 @@ const addBudgetBreakdownBody = (doc, content) => {
 };
 
 const addResourceRequestBody = (doc, content) => {
+  if (isAdditionalBudgetLetterContent(content)) {
+    const eventTitle = normalizeText(content.eventTitle, 'the event');
+    const reason = normalizeText(content.increasedRequirementsReason, '___________');
+    const requiredAmount = normalizeText(content.requiredAmount, '___________');
+
+    doc.text('Sir,', { align: 'left' });
+    doc.moveDown(0.8);
+
+    doc.text(
+      'With due respect, I would like to state that for the smooth execution of ongoing and upcoming activities of the CSE Society, additional budget is required beyond the initially allocated funds.',
+      { align: 'justify' }
+    );
+    doc.moveDown(0.8);
+
+    doc.text(
+      `The increased requirements are mainly due to ${reason} which are essential to maintain the quality and proper management of the ${eventTitle}.`,
+      { align: 'justify' }
+    );
+    doc.moveDown(0.8);
+
+    doc.text(`The required amount is ${requiredAmount} BDT.`, { align: 'justify' });
+    doc.moveDown(0.8);
+
+    doc.text(
+      'Therefore, I humbly request you to kindly consider and approve the additional budget allocation for the CSE Society activities.',
+      { align: 'justify' }
+    );
+    doc.moveDown(0.8);
+
+    doc.text('I would be highly grateful for your kind approval.', { align: 'justify' });
+    return;
+  }
+
   const resourceType = normalizeText(content.resourceType, '___________');
   const quantity = normalizeText(content.quantity, '');
   const purpose = normalizeText(content.purpose, '');
@@ -297,7 +346,12 @@ const writeApplicationLetterPdf = (doc, application) => {
   doc.text('CSE Society, SUST, Sylhet');
   doc.moveDown(0.8);
 
-  if (application.type === 'fund_withdrawal' && throughTitle && throughTitle !== 'None') {
+  if (
+    (application.type === 'fund_withdrawal' ||
+      (application.type === 'resource_request' && isAdditionalBudgetLetterContent(content))) &&
+    throughTitle &&
+    throughTitle !== 'None'
+  ) {
     doc.text('Through');
     doc.text(`${throughTitle},`);
     doc.text('CSE Society, SUST, Sylhet');
@@ -530,7 +584,9 @@ exports.getBudgetBreakdowns = async (req, res) => {
 
     return res.json({
       success: true,
-      applications,
+      applications: applications.filter((application) =>
+        Array.isArray(application?.content?.sections)
+      ),
     });
   } catch (error) {
     console.error('Get budget breakdowns error:', error);
@@ -638,10 +694,11 @@ exports.forwardToAdmin = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
-    if (existing.status !== 'submitted') {
+    // Allow forwarding from draft (society member forwarding directly) or submitted status
+    if (!['draft', 'submitted'].includes(existing.status)) {
       return res.status(400).json({
         success: false,
-        message: 'Only submitted applications can be forwarded to admin review',
+        message: 'Applications can only be forwarded from draft or submitted status',
       });
     }
 
@@ -650,7 +707,7 @@ exports.forwardToAdmin = async (req, res) => {
       data: { status: 'under_review' },
     });
 
-    res.json({ success: true, message: 'Application forwarded to admin', application });
+    res.json({ success: true, message: 'Budget forwarded to admin for review', application });
   } catch (error) {
     console.error('Forward application error:', error);
     res.status(500).json({
