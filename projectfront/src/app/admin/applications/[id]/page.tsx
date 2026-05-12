@@ -29,9 +29,21 @@ const STATUS_META: Record<
 const TYPE_LABELS: Record<string, string> = {
   fund_withdrawal: "Fund Withdrawal",
   event_approval: "Event Approval",
-  resource_request: "Resource Request",
+  resource_request: "Additional Budget",
   budget_breakdown: "Budget Breakdown",
 };
+
+function isStructuredBudgetBreakdown(application: SocietyApplication | null) {
+  const content = application?.content;
+  return (
+    application?.type === "budget_breakdown" &&
+    Boolean(
+      content &&
+        typeof content === "object" &&
+        Array.isArray((content as { sections?: unknown[] }).sections)
+    )
+  );
+}
 
 function formatDate(iso: string) {
   const d = new Date(iso);
@@ -111,6 +123,11 @@ export default function AdminApplicationDetailPage() {
     }
     return String(value);
   };
+
+  const showBudgetBreakdownDetails = isStructuredBudgetBreakdown(application);
+  const isAdditionalBudgetApplication =
+    application?.type === "resource_request" ||
+    (application?.type === "budget_breakdown" && !showBudgetBreakdownDetails);
 
   const handleApprove = async () => {
     if (!application) return;
@@ -214,7 +231,7 @@ export default function AdminApplicationDetailPage() {
         )}
       </SectionCard>
 
-      {!loading && application?.type === "budget_breakdown" && (
+      {!loading && showBudgetBreakdownDetails && (
         <div className="space-y-6">
           <SectionCard title="Budget details" description="Review the budget sheet before deciding.">
             <div className="space-y-4">
@@ -277,7 +294,7 @@ export default function AdminApplicationDetailPage() {
         </div>
       )}
 
-      {!loading && application?.type !== "budget_breakdown" && application && (
+      {!loading && application && !showBudgetBreakdownDetails && (
         <SectionCard title="Application content" description="Submitted data provided by the society member.">
           {application.type === "event_approval" && (
             <div className="space-y-4">
@@ -328,18 +345,18 @@ export default function AdminApplicationDetailPage() {
             </div>
           )}
 
-          {application.type === "resource_request" && (
+          {isAdditionalBudgetApplication && (
             <div className="space-y-4">
               <div className="grid gap-3 text-sm md:grid-cols-2">
                 <p><span className="font-medium text-foreground">Application date:</span> {getContentText("applicationDate")}</p>
-                <p><span className="font-medium text-foreground">Resource type:</span> {getContentText("resourceType")}</p>
-                <p><span className="font-medium text-foreground">Quantity:</span> {getContentText("quantity")}</p>
-                <p><span className="font-medium text-foreground">Duration:</span> {getContentText("duration")}</p>
-                <p><span className="font-medium text-foreground">Event reference:</span> {getContentText("eventReference")}</p>
+                <p><span className="font-medium text-foreground">Addressed to:</span> {getContentText("recipientTitle")}</p>
+                <p><span className="font-medium text-foreground">Through:</span> {getContentText("throughTitle")}</p>
+                <p><span className="font-medium text-foreground">Event title:</span> {getContentText("eventTitle")}</p>
+                <p><span className="font-medium text-foreground">Required amount:</span> {getContentText("requiredAmount")}</p>
               </div>
               <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Purpose</p>
-                <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">{getContentText("purpose")}</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Reason for additional budget</p>
+                <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">{getContentText("increasedRequirementsReason")}</p>
               </div>
               <div className="grid gap-3 text-sm md:grid-cols-2">
                 <p><span className="font-medium text-foreground">Applicant name:</span> {getContentText("applicantName")}</p>
@@ -350,11 +367,8 @@ export default function AdminApplicationDetailPage() {
             </div>
           )}
 
-          {![
-            "event_approval",
-            "fund_withdrawal",
-            "resource_request",
-          ].includes(application.type) && (
+          {!["event_approval", "fund_withdrawal"].includes(application.type) &&
+            !isAdditionalBudgetApplication && (
             <pre className="whitespace-pre-wrap break-all rounded-xl border border-border/70 bg-muted/30 p-4 text-xs text-muted-foreground">
               {JSON.stringify(application.content || {}, null, 2)}
             </pre>
