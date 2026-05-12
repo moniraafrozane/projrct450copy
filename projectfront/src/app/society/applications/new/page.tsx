@@ -135,7 +135,7 @@ const defaultAdditionalBudget: AdditionalBudgetContent = {
   phoneNumber: '',
 };
 
-const selectableApplicationTypes: ApplicationType[] = ['fund_withdrawal', 'event_approval', 'budget_breakdown'];
+const selectableApplicationTypes: ApplicationType[] = ['fund_withdrawal', 'event_approval', 'resource_request'];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -158,7 +158,8 @@ function buildSubject(type: ApplicationType, content: Record<string, string>): s
     const title = content.eventTitle || 'the event';
     return `Additional Budget Breakdown — Application for approval of additional budget for ${title}`;
   }
-  return `Request for resource allocation – ${content.resourceType || 'items'}`;
+  const title = content.eventTitle || 'the event';
+  return `Application for approval of additional budget for ${title}`;
 }
 
 // ─── Letter Preview ───────────────────────────────────────────────────────────
@@ -172,7 +173,7 @@ function LetterPreview({
 }) {
   const fw = content as FundWithdrawalContent;
   const ea = content as EventApprovalContent;
-  const rr = content as ResourceRequestContent;
+  const ab = content as AdditionalBudgetContent;
 
   const renderBody = () => {
     if (type === 'fund_withdrawal') {
@@ -243,7 +244,7 @@ function LetterPreview({
 
     
 
-    if (type === 'budget_breakdown') {
+    if (type === 'resource_request' || type === 'budget_breakdown') {
       return (
         <>
           <p className="mb-4">Sir,</p>
@@ -252,11 +253,11 @@ function LetterPreview({
           </p>
 
           <p className="mb-4 text-justify">
-            The increased requirements are mainly due to <strong>{(content as Record<string, string>).increasedRequirementsReason || '___________'}</strong> (e.g. expansion of event scale / additional materials / unexpected expenses) which are essential to maintain the quality and proper management of the <strong>{(content as Record<string, string>).eventTitle || '___________'}</strong>.
+            The increased requirements are mainly due to <strong>{ab.increasedRequirementsReason || '___________'}</strong> (e.g. expansion of event scale / additional materials / unexpected expenses) which are essential to maintain the quality and proper management of the <strong>{ab.eventTitle || '___________'}</strong>.
           </p>
 
           <p className="mb-4 text-justify">
-            The required amount is <strong>{(content as Record<string, string>).requiredAmount ? `${(content as Record<string, string>).requiredAmount} BDT` : '___________ BDT'}</strong>.
+            The required amount is <strong>{ab.requiredAmount ? `${ab.requiredAmount} BDT` : '___________ BDT'}</strong>.
           </p>
 
           <p className="mb-6 text-justify">
@@ -268,23 +269,7 @@ function LetterPreview({
       );
     }
 
-    // resource_request
-    return (
-      <>
-        <p className="mb-4">Sir/Madam,</p>
-        <p className="mb-4 text-justify">
-          With due respect, I would like to request the allocation of{' '}
-          <strong>{rr.quantity ? `${rr.quantity} unit(s) of ` : ''}</strong>
-          <strong>{rr.resourceType || '___________'}</strong>
-          {rr.purpose && ` for ${rr.purpose}`}
-          {rr.duration && `, for a duration of ${rr.duration}`}
-          {rr.eventReference && `, in relation to the event: ${rr.eventReference}`}.
-        </p>
-        <p className="mb-6 text-justify">
-          I humbly request you to kindly arrange the said resource at your earliest convenience.
-        </p>
-      </>
-    );
+    return null;
   };
 
   const hasThroughLine = Boolean((content as Record<string, string>).throughTitle && (content as Record<string, string>).throughTitle !== 'None');
@@ -476,7 +461,7 @@ function GenerateApplicationPageInner() {
   const [upcomingEvents, setUpcomingEvents] = useState<Array<{ id: string; title: string }>>([]);
   const [loadingEvents, setLoadingEvents] = useState(false);
 
-  const pdfDownloadSupported = type === 'fund_withdrawal' || type === 'event_approval' || type === 'budget_breakdown';
+  const pdfDownloadSupported = type === 'fund_withdrawal' || type === 'event_approval' || type === 'resource_request';
 
   // Load existing draft when ?draft= param is present
   useEffect(() => {
@@ -485,9 +470,17 @@ function GenerateApplicationPageInner() {
       .getApplicationById(draftId)
       .then((res) => {
         const app = res.application;
+        const isLegacyAdditionalBudgetDraft =
+          app.type === 'budget_breakdown' &&
+          !Array.isArray((app.content as { sections?: unknown[] })?.sections);
+
         setSavedId(app.id);
-        setType(app.type);
-        setContent(app.content as FormContent);
+        setType(isLegacyAdditionalBudgetDraft ? 'resource_request' : app.type);
+        setContent(
+          (isLegacyAdditionalBudgetDraft
+            ? { ...defaultAdditionalBudget, ...(app.content as Record<string, string>) }
+            : app.content) as FormContent
+        );
       })
       .catch(() => setError('Could not load the draft.'))
       .finally(() => setLoadingDraft(false));
@@ -522,8 +515,7 @@ function GenerateApplicationPageInner() {
     setError('');
     if (newType === 'fund_withdrawal') setContent(defaultFundWithdrawal);
     else if (newType === 'event_approval') setContent(defaultEventApproval);
-    else if (newType === 'budget_breakdown') setContent(defaultAdditionalBudget);
-    else setContent(defaultResourceRequest);
+    else setContent(defaultAdditionalBudget);
   };
 
   const handleFieldChange = useCallback(
@@ -813,7 +805,7 @@ function GenerateApplicationPageInner() {
       );
     }
 
-    if (type === 'budget_breakdown') {
+    if (type === 'resource_request' || type === 'budget_breakdown') {
       return (
         <div className="space-y-6">
           <div className="grid gap-6 md:grid-cols-2">
@@ -922,8 +914,8 @@ function GenerateApplicationPageInner() {
   const typeLabels: Record<ApplicationType, string> = {
     fund_withdrawal: 'Fund Withdrawal',
     event_approval: 'Event Approval',
-    resource_request: 'Resource Request',
-    budget_breakdown: 'Additional budget',
+    resource_request: 'Additional budget',
+    budget_breakdown: 'Budget breakdown',
   };
 
   return (
