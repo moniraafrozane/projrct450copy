@@ -767,6 +767,7 @@ export interface MemberNote {
 
 // ─── Society Application API ────────────────────────────────────────
 interface ApplicationResponse {
+  id: string | null;
   success: boolean;
   message?: string;
   application: SocietyApplication;
