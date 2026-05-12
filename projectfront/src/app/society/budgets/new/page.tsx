@@ -41,8 +41,8 @@ export default function NewBudgetPage() {
   const [newCategoryTitle, setNewCategoryTitle] = useState("");
   const [newCategoryAmount, setNewCategoryAmount] = useState("");
   const [addCategoryError, setAddCategoryError] = useState("");
-  const [creatingApplication, setCreatingApplication] = useState(false);
   const [justification, setJustification] = useState("");
+  const [forwarding, setForwarding] = useState(false);
 
   useEffect(() => {
     const loadUpcomingEvents = async () => {
@@ -283,44 +283,45 @@ export default function NewBudgetPage() {
     }
   };
 
-    const handleCreateApplication = async () => {
-      setError("");
-      setMessage("");
+  const handleForwardToAdmin = async () => {
+    setError("");
+    setMessage("");
 
-      if (!eventId) {
-        setError("Please select an upcoming event");
-        return;
-      }
+    if (!eventId) {
+      setError("Please select an upcoming event");
+      return;
+    }
 
-      if (categories.length === 0) {
-        setError("Add at least one budget category");
-        return;
-      }
+    if (categories.length === 0) {
+      setError("Add at least one budget category");
+      return;
+    }
 
-      const hasPositive = categories.some((cat) => Number(cat.amount) > 0);
-      if (!hasPositive) {
-        setError("Enter an amount greater than 0 for at least one category");
-        return;
-      }
+    const hasPositive = categories.some((cat) => Number(cat.amount) > 0);
+    if (!hasPositive) {
+      setError("Enter an amount greater than 0 for at least one category");
+      return;
+    }
 
-      try {
-        setCreatingApplication(true);
+    try {
+      setForwarding(true);
 
-        const sections = categories.map((cat) => ({
-          title: cat.title,
-          amount: cat.amount,
-          key: `cat-${cat.id}`,
-          helper: "",
-          notes: "",
-          optional: false,
-        }));
+      const sections = categories.map((cat) => ({
+        title: cat.title,
+        amount: cat.amount,
+        key: `cat-${cat.id}`,
+        helper: "",
+        notes: "",
+        optional: false,
+      }));
 
-        const subjectEvent =
-          selectedEvent?.title || (existingBudget?.content as any)?.eventTitle || "Untitled Event";
+      let applicationId = editId;
 
+      if (isEditMode && editId) {
+        const subjectEvent = selectedEvent?.title || (existingBudget?.content as any)?.eventTitle || "Untitled Event";
         const fallbackContent = (existingBudget?.content || {}) as Partial<BudgetBreakdownContent>;
 
-        const response = await applicationAPI.createApplication({
+        await applicationAPI.updateApplication(editId, {
           type: "budget_breakdown",
           subject: `Additional Budget Breakdown — Application for approval of additional budget for ${subjectEvent}`,
           content: {
@@ -331,23 +332,36 @@ export default function NewBudgetPage() {
             eventVenue: selectedEvent?.venue || fallbackContent.eventVenue || "",
             organizerName: selectedEvent?.organizerName || fallbackContent.organizerName || "",
             sections,
-            justification,
             calculatedTotal,
             overrideAmount: null,
             totalAmount,
           },
         });
+      } else {
+        const response = await applicationAPI.createBudgetBreakdown({
+          eventId,
+          sections,
+          calculatedTotal,
+          overrideAmount: null,
+          totalAmount,
+        });
+        applicationId = response.id;
+      }
 
-        setMessage(response.message || "application created successfully");
+      if (applicationId) {
+        const forwardResponse = await applicationAPI.forwardApplication(applicationId);
+        setMessage(forwardResponse.message || "Budget forwarded to admin for review");
+        
         setTimeout(() => {
           router.push("/society/budgets");
         }, 1200);
-      } catch (createError: any) {
-        setError(createError.response?.data?.message || "Failed to create application");
-      } finally {
-        setCreatingApplication(false);
       }
-    };
+    } catch (error: any) {
+      setError(error.response?.data?.message || "Failed to forward budget to admin");
+    } finally {
+      setForwarding(false);
+    }
+  };
 
   return (
     <div className="space-y-10">
@@ -554,28 +568,28 @@ export default function NewBudgetPage() {
             <Textarea
               value={justification}
               onChange={(e) => setJustification(e.target.value)}
-              disabled={creatingApplication || saving || loadingExisting || loadingEvents}
+              disabled={saving || loadingExisting || loadingEvents}
               className="min-h-[120px]"
               placeholder="Explain why additional funds are needed and how they'll be used."
             />
           </label>
           <div className="flex flex-wrap gap-3">
             <Button
-              onClick={handleCreateApplication}
-              disabled={creatingApplication || saving || loadingEvents || loadingExisting}
-            >
-              {creatingApplication ? "Creating..." : "Create application letter"}
-            </Button>
-            <Button
               onClick={handleSave}
-              disabled={saving || loadingEvents || loadingExisting}
+              disabled={saving || forwarding || loadingEvents || loadingExisting}
             >
               {saving ? "Saving..." : isEditMode ? "Update budget" : "Save budget draft"}
             </Button>
             <Button
+              onClick={handleForwardToAdmin}
+              disabled={saving || forwarding || loadingEvents || loadingExisting}
+            >
+              {forwarding ? "Forwarding..." : "Forward to admin"}
+            </Button>
+            <Button
               variant="outline"
               onClick={() => router.push("/society/budgets")}
-              disabled={creatingApplication || saving || loadingExisting}
+              disabled={saving || forwarding || loadingExisting}
             >
               Cancel
             </Button>
