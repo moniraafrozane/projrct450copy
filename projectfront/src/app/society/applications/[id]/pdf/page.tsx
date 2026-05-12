@@ -12,7 +12,7 @@ function getIdFromParams(idParam: string | string[] | undefined): string | null 
   return idParam ?? null;
 }
 
-export default function AdminApplicationPdfPage() {
+export default function SocietyApplicationPdfPage() {
   const params = useParams();
   const id = getIdFromParams(params?.id as string | string[] | undefined);
 
@@ -144,13 +144,10 @@ export default function AdminApplicationPdfPage() {
   return (
     <div className="space-y-8">
       <PageHeader
-        eyebrow="Admin"
+        eyebrow="Society"
         title="Application PDF"
-        description="View the submitted application in formal letter format and download a copy."
-        actions={[
-          { label: "Back to admin dashboard", href: "/admin", variant: "outline" },
-          { label: "Open review details", href: id ? `/admin/applications/${id}` : "/admin", variant: "outline" },
-        ]}
+        description="View the submitted application in PDF form and keep a copy for your records."
+        actions={[{ label: "Back to applications", href: "/society/applications", variant: "outline" }]}
       />
 
       {error && (
@@ -161,7 +158,7 @@ export default function AdminApplicationPdfPage() {
 
       <SectionCard
         title="Application document"
-        description="This PDF mirrors the original letter-style application submitted by society members."
+        description="This PDF mirrors the original letter-style application submitted by the society member."
       >
         {loading ? (
           <p className="text-sm text-muted-foreground">Loading PDF...</p>

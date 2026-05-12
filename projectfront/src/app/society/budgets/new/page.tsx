@@ -10,33 +10,17 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   applicationAPI,
   BudgetBreakdownContent,
-  BudgetBreakdownSection,
   Event,
   eventAPI,
   SocietyApplication,
 } from "@/lib/api";
 
-const costSections = [
-  { key: "venue", title: "Venue-related costs", helper: "Hall rental, stage setup, permits" },
-  { key: "technical", title: "Event setup & technical costs", helper: "Lighting, sound, livestream, equipment" },
-  { key: "catering", title: "Food & catering costs", helper: "Snacks, meals, beverages" },
-  { key: "manpower", title: "Manpower costs", helper: "Volunteers, security, support staff" },
-  { key: "marketing", title: "Marketing costs", helper: "Posters, social, paid reach" },
-  { key: "documentation", title: "Documentation costs", helper: "Photography, video, post-production" },
-  { key: "accessories", title: "Accessories", helper: "Badges, banners, stationeries, contingencies" },
-];
-
-type EditableSection = BudgetBreakdownSection;
-
-const createInitialSections = (): EditableSection[] =>
-  costSections.map((section) => ({
-    key: section.key,
-    title: section.title,
-    helper: section.helper,
-    amount: 0,
-    notes: "",
-    optional: false,
-  }));
+interface BudgetCategory {
+  id: string;
+  title: string;
+  amount: number;
+  isEditing: boolean;
+}
 
 export default function NewBudgetPage() {
   const router = useRouter();
@@ -53,7 +37,12 @@ export default function NewBudgetPage() {
   const [existingBudget, setExistingBudget] = useState<SocietyApplication | null>(null);
 
   const [eventId, setEventId] = useState("");
-  const [sections, setSections] = useState<EditableSection[]>(createInitialSections());
+  const [categories, setCategories] = useState<BudgetCategory[]>([]);
+  const [newCategoryTitle, setNewCategoryTitle] = useState("");
+  const [newCategoryAmount, setNewCategoryAmount] = useState("");
+  const [addCategoryError, setAddCategoryError] = useState("");
+  const [creatingApplication, setCreatingApplication] = useState(false);
+  const [justification, setJustification] = useState("");
 
   useEffect(() => {
     const loadUpcomingEvents = async () => {
@@ -109,21 +98,14 @@ export default function NewBudgetPage() {
         setEventId(content.eventId || "");
 
         const incomingSections = Array.isArray(content.sections) ? content.sections : [];
-        const mergedSections = costSections.map((base) => {
-          const found = incomingSections.find(
-            (section) => section.key === base.key || section.title === base.title
-          );
-          return {
-            key: base.key,
-            title: base.title,
-            helper: base.helper,
-            amount: Number(found?.amount || 0),
-            notes: found?.notes || "",
-            optional: Boolean(found?.optional),
-          };
-        });
+        const loadedCategories: BudgetCategory[] = incomingSections.map((section, index) => ({
+          id: `cat-${Date.now()}-${index}`,
+          title: section.title || "",
+          amount: Number(section.amount || 0),
+          isEditing: false,
+        }));
 
-        setSections(mergedSections);
+        setCategories(loadedCategories);
       } catch (loadError: any) {
         setError(loadError.response?.data?.message || "Failed to load budget for editing");
       } finally {
@@ -140,25 +122,89 @@ export default function NewBudgetPage() {
   );
 
   const calculatedTotal = useMemo(
-    () => sections.reduce((total, section) => total + (Number(section.amount) || 0), 0),
-    [sections]
+    () => categories.reduce((total, category) => total + (Number(category.amount) || 0), 0),
+    [categories]
   );
 
   const totalAmount = calculatedTotal;
 
-  const updateSection = (key: string, field: keyof EditableSection, value: string | boolean) => {
-    setSections((prev) =>
-      prev.map((section) => {
-        if (section.key !== key) return section;
-        if (field === "amount") {
-          const amount = Number(value);
-          return { ...section, amount: Number.isFinite(amount) && amount >= 0 ? amount : 0 };
-        }
-        return { ...section, [field]: value };
-      })
+  // Category management functions
+  const isDuplicateTitle = (title: string, excludeId?: string): boolean => {
+    return categories.some((cat) => 
+      cat.title.toLowerCase() === title.toLowerCase() && cat.id !== excludeId
     );
-    setMessage("");
+  };
+
+  const addCategory = () => {
+    setAddCategoryError("");
+
+    if (!newCategoryTitle.trim()) {
+      setAddCategoryError("Category title is required");
+      return;
+    }
+
+    if (isDuplicateTitle(newCategoryTitle)) {
+      setAddCategoryError(`Category "${newCategoryTitle}" already exists`);
+      return;
+    }
+
+    const amount = Number(newCategoryAmount) || 0;
+    if (amount < 0) {
+      setAddCategoryError("Amount cannot be negative");
+      return;
+    }
+
+    const newCategory: BudgetCategory = {
+      id: `cat-${Date.now()}`,
+      title: newCategoryTitle.trim(),
+      amount,
+      isEditing: false,
+    };
+
+    setCategories([...categories, newCategory]);
+    setNewCategoryTitle("");
+    setNewCategoryAmount("");
     setError("");
+    setMessage("");
+  };
+
+  const deleteCategory = (id: string) => {
+    setCategories(categories.filter((cat) => cat.id !== id));
+    setError("");
+    setMessage("");
+  };
+
+  const toggleEditMode = (id: string) => {
+    setCategories(
+      categories.map((cat) =>
+        cat.id === id ? { ...cat, isEditing: !cat.isEditing } : cat
+      )
+    );
+  };
+
+  const updateCategory = (id: string, field: "title" | "amount", value: string) => {
+    if (field === "title") {
+      const trimmedValue = value.trim();
+      if (trimmedValue && isDuplicateTitle(trimmedValue, id)) {
+        return; // Don't update if it would create a duplicate
+      }
+      setCategories(
+        categories.map((cat) =>
+          cat.id === id ? { ...cat, title: trimmedValue } : cat
+        )
+      );
+    } else if (field === "amount") {
+      const amount = Number(value);
+      if (Number.isFinite(amount) && amount >= 0) {
+        setCategories(
+          categories.map((cat) =>
+            cat.id === id ? { ...cat, amount } : cat
+          )
+        );
+      }
+    }
+    setError("");
+    setMessage("");
   };
 
   const handleSave = async () => {
@@ -170,14 +216,28 @@ export default function NewBudgetPage() {
       return;
     }
 
-    const hasPositive = sections.some((section) => Number(section.amount) > 0);
+    if (categories.length === 0) {
+      setError("Add at least one budget category");
+      return;
+    }
+
+    const hasPositive = categories.some((cat) => Number(cat.amount) > 0);
     if (!hasPositive) {
-      setError("Enter an amount greater than 0 for at least one section");
+      setError("Enter an amount greater than 0 for at least one category");
       return;
     }
 
     try {
       setSaving(true);
+
+      const sections = categories.map((cat) => ({
+        title: cat.title,
+        amount: cat.amount,
+        key: `cat-${cat.id}`,
+        helper: "",
+        notes: "",
+        optional: false,
+      }));
 
       if (isEditMode && editId) {
         const subjectEvent = selectedEvent?.title || (existingBudget?.content as any)?.eventTitle || "Untitled Event";
@@ -185,7 +245,7 @@ export default function NewBudgetPage() {
 
         const response = await applicationAPI.updateApplication(editId, {
           type: "budget_breakdown",
-          subject: `Budget breakdown - ${subjectEvent}`,
+          subject: `Additional Budget Breakdown — Application for approval of additional budget for ${subjectEvent}`,
           content: {
             eventId,
             eventTitle: selectedEvent?.title || fallbackContent.eventTitle || "Untitled Event",
@@ -222,6 +282,72 @@ export default function NewBudgetPage() {
       setSaving(false);
     }
   };
+
+    const handleCreateApplication = async () => {
+      setError("");
+      setMessage("");
+
+      if (!eventId) {
+        setError("Please select an upcoming event");
+        return;
+      }
+
+      if (categories.length === 0) {
+        setError("Add at least one budget category");
+        return;
+      }
+
+      const hasPositive = categories.some((cat) => Number(cat.amount) > 0);
+      if (!hasPositive) {
+        setError("Enter an amount greater than 0 for at least one category");
+        return;
+      }
+
+      try {
+        setCreatingApplication(true);
+
+        const sections = categories.map((cat) => ({
+          title: cat.title,
+          amount: cat.amount,
+          key: `cat-${cat.id}`,
+          helper: "",
+          notes: "",
+          optional: false,
+        }));
+
+        const subjectEvent =
+          selectedEvent?.title || (existingBudget?.content as any)?.eventTitle || "Untitled Event";
+
+        const fallbackContent = (existingBudget?.content || {}) as Partial<BudgetBreakdownContent>;
+
+        const response = await applicationAPI.createApplication({
+          type: "budget_breakdown",
+          subject: `Additional Budget Breakdown — Application for approval of additional budget for ${subjectEvent}`,
+          content: {
+            eventId,
+            eventTitle: selectedEvent?.title || fallbackContent.eventTitle || "Untitled Event",
+            eventDate: selectedEvent?.eventDate || fallbackContent.eventDate || "",
+            eventStartTime: selectedEvent?.startTime || fallbackContent.eventStartTime || "",
+            eventVenue: selectedEvent?.venue || fallbackContent.eventVenue || "",
+            organizerName: selectedEvent?.organizerName || fallbackContent.organizerName || "",
+            sections,
+            justification,
+            calculatedTotal,
+            overrideAmount: null,
+            totalAmount,
+          },
+        });
+
+        setMessage(response.message || "application created successfully");
+        setTimeout(() => {
+          router.push("/society/budgets");
+        }, 1200);
+      } catch (createError: any) {
+        setError(createError.response?.data?.message || "Failed to create application");
+      } finally {
+        setCreatingApplication(false);
+      }
+    };
 
   return (
     <div className="space-y-10">
@@ -282,48 +408,132 @@ export default function NewBudgetPage() {
         )}
       </SectionCard>
 
-      <SectionCard title="Budget categories" description="Enter projected amount and notes for each section.">
-        <div className="grid gap-5">
-          {sections.map((section) => (
-            <div key={section.key} className="space-y-4 rounded-2xl border border-border/70 p-5">
-              <div>
-                <p className="text-base font-semibold text-foreground">{section.title}</p>
-                <p className="text-sm text-muted-foreground">{section.helper}</p>
-              </div>
-              <div className="grid gap-3 md:grid-cols-2">
-                <label className="flex flex-col gap-2 text-sm">
-                  Estimated amount (BDT)
-                  <Input
-                    type="number"
-                    min={0}
-                    value={section.amount || ""}
-                    onChange={(e) => updateSection(section.key, "amount", e.target.value)}
-                    placeholder="e.g. 6500"
-                    disabled={saving || loadingExisting}
-                  />
-                </label>
-                <label className="flex flex-col gap-2 text-sm">
-                  Notes / justification
-                  <Textarea
-                    value={section.notes}
-                    onChange={(e) => updateSection(section.key, "notes", e.target.value)}
-                    placeholder="Explain the spend"
-                    rows={3}
-                    disabled={saving || loadingExisting}
-                  />
-                </label>
-              </div>
-              <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={section.optional}
-                  onChange={(e) => updateSection(section.key, "optional", e.target.checked)}
-                  disabled={saving || loadingExisting}
-                />
-                Mark as optional
-              </label>
+      <SectionCard title="Budget categories" description="Add, edit, or delete budget categories as needed.">
+        <div className="space-y-5">
+          {/* List of categories */}
+          {categories.length > 0 && (
+            <div className="space-y-3 border-b border-border/50 pb-5">
+              {categories.map((category) => (
+                <div
+                  key={category.id}
+                  className="flex flex-col gap-3 rounded-lg border border-border/50 bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="flex-1 space-y-2">
+                    {category.isEditing ? (
+                      <input
+                        type="text"
+                        value={category.title}
+                        onChange={(e) => updateCategory(category.id, "title", e.target.value)}
+                        placeholder="Category title"
+                        disabled={saving || loadingExisting}
+                        className="w-full rounded-lg border border-border/70 bg-background px-3 py-2 text-sm"
+                      />
+                    ) : (
+                      <p className="text-sm font-medium text-foreground">{category.title}</p>
+                    )}
+                    {category.isEditing ? (
+                      <input
+                        type="number"
+                        min={0}
+                        value={category.amount || ""}
+                        onChange={(e) => updateCategory(category.id, "amount", e.target.value)}
+                        placeholder="0"
+                        disabled={saving || loadingExisting}
+                        className="w-full rounded-lg border border-border/70 bg-background px-3 py-2 text-sm"
+                      />
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        {new Intl.NumberFormat("en-BD", {
+                          style: "currency",
+                          currency: "BDT",
+                          minimumFractionDigits: 0,
+                        }).format(category.amount)}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex gap-2 sm:gap-3">
+                    <button
+                      onClick={() => toggleEditMode(category.id)}
+                      disabled={saving || loadingExisting}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-border/50 bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-50"
+                      title={category.isEditing ? "Save changes" : "Edit category"}
+                    >
+                      {category.isEditing ? (
+                        <>
+                          <span>✓</span>
+                          <span className="hidden sm:inline">Save</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>✎</span>
+                          <span className="hidden sm:inline">Edit</span>
+                        </>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => deleteCategory(category.id)}
+                      disabled={saving || loadingExisting}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-100 disabled:opacity-50"
+                      title="Delete category"
+                    >
+                      <span>🗑</span>
+                      <span className="hidden sm:inline">Delete</span>
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
+
+          {/* Add new category */}
+          <div className="rounded-lg border border-border/70 bg-muted/10 p-4">
+            <p className="mb-3 text-sm font-medium text-foreground">Add New Category</p>
+            {addCategoryError && (
+              <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+                {addCategoryError}
+              </div>
+            )}
+            <div className="grid gap-3 sm:grid-cols-3 sm:gap-2">
+              <input
+                type="text"
+                value={newCategoryTitle}
+                onChange={(e) => {
+                  setNewCategoryTitle(e.target.value);
+                  setAddCategoryError("");
+                }}
+                placeholder="Category title"
+                disabled={saving || loadingExisting}
+                className="rounded-lg border border-border/70 bg-background px-3 py-2 text-sm"
+              />
+              <input
+                type="number"
+                min={0}
+                value={newCategoryAmount}
+                onChange={(e) => {
+                  setNewCategoryAmount(e.target.value);
+                  setAddCategoryError("");
+                }}
+                placeholder="Amount (BDT)"
+                disabled={saving || loadingExisting}
+                className="rounded-lg border border-border/70 bg-background px-3 py-2 text-sm"
+              />
+              <Button
+                onClick={addCategory}
+                disabled={saving || loadingExisting || !newCategoryTitle.trim()}
+                className="w-full sm:w-auto"
+              >
+                + Add
+              </Button>
+            </div>
+          </div>
+
+          {categories.length === 0 && (
+            <div className="rounded-lg border border-dashed border-border/50 bg-muted/30 px-4 py-8 text-center">
+              <p className="text-sm text-muted-foreground">
+                No categories added yet. Add your first budget category above.
+              </p>
+            </div>
+          )}
         </div>
       </SectionCard>
 
@@ -338,20 +548,38 @@ export default function NewBudgetPage() {
             <Input value={String(totalAmount)} readOnly />
           </label>
         </div>
-        <div className="mt-4 flex flex-wrap gap-3">
-          <Button
-            onClick={handleSave}
-            disabled={saving || loadingEvents || loadingExisting}
-          >
-            {saving ? "Saving..." : isEditMode ? "Update budget" : "Save budget draft"}
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => router.push("/society/budgets")}
-            disabled={saving || loadingExisting}
-          >
-            Cancel
-          </Button>
+        <div className="mt-4">
+          <label className="flex flex-col gap-2 text-sm mb-3">
+            Justification for additional budget
+            <Textarea
+              value={justification}
+              onChange={(e) => setJustification(e.target.value)}
+              disabled={creatingApplication || saving || loadingExisting || loadingEvents}
+              className="min-h-[120px]"
+              placeholder="Explain why additional funds are needed and how they'll be used."
+            />
+          </label>
+          <div className="flex flex-wrap gap-3">
+            <Button
+              onClick={handleCreateApplication}
+              disabled={creatingApplication || saving || loadingEvents || loadingExisting}
+            >
+              {creatingApplication ? "Creating..." : "Create application letter"}
+            </Button>
+            <Button
+              onClick={handleSave}
+              disabled={saving || loadingEvents || loadingExisting}
+            >
+              {saving ? "Saving..." : isEditMode ? "Update budget" : "Save budget draft"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => router.push("/society/budgets")}
+              disabled={creatingApplication || saving || loadingExisting}
+            >
+              Cancel
+            </Button>
+          </div>
         </div>
       </SectionCard>
     </div>

@@ -165,9 +165,7 @@ export default function SocietyApplicationsPage() {
     );
   };
 
-  const nonBudgetApplications = applications.filter((a) => a.type !== 'budget_breakdown');
-  const drafts = nonBudgetApplications.filter((a) => a.status === 'draft');
-  const queue = nonBudgetApplications.filter((a) => a.status !== 'draft');
+  const queue = applications.filter((a) => a.status !== 'draft');
 
   return (
     <div className="space-y-10">
@@ -195,69 +193,7 @@ export default function SocietyApplicationsPage() {
         </div>
       )}
 
-      {/* ── Drafts ──────────────────────────────────────────────────────── */}
-      {(loading || drafts.length > 0) && (
-        <SectionCard
-          title="Saved Drafts"
-          description="Open drafts — any society member can edit or add notes before submitting."
-        >
-          {loading ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
-          ) : (
-            <div className="space-y-4">
-              {drafts.map((app) => (
-                <div key={app.id} className="rounded-2xl border border-border/70 p-5">
-                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <p className="text-base font-semibold text-foreground">
-                        {typeLabels[app.type] ?? app.type}
-                      </p>
-                      <p className="text-sm text-muted-foreground line-clamp-1">{app.subject}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Created by {app.createdByName} · {formatDate(app.createdAt)}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {(app.memberNotes?.length ?? 0) > 0 && (
-                        <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                          {app.memberNotes.length} note{app.memberNotes.length !== 1 ? 's' : ''}
-                        </span>
-                      )}
-                      <Badge variant="default">Draft</Badge>
-                    </div>
-                  </div>
-                  <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-                    <Button variant="outline" size="sm" asChild>
-                      <a href={`/society/applications/new?draft=${app.id}`}>Edit</a>
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setNotesOpenId(notesOpenId === app.id ? null : app.id)}
-                    >
-                      {notesOpenId === app.id ? 'Hide notes' : 'Add / view notes'}
-                    </Button>
-                    <Button
-                      size="sm"
-                      disabled={sendingId === app.id}
-                      onClick={() => handleSubmitDraft(app.id)}
-                    >
-                      {sendingId === app.id ? 'Sending…' : 'Send to Admin'}
-                    </Button>
-                  </div>
-                  {notesOpenId === app.id && (
-                    <NotesPanel
-                      appId={app.id}
-                      notes={app.memberNotes ?? []}
-                      onNoteAdded={handleNoteAdded}
-                    />
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </SectionCard>
-      )}
+      {/* Saved Drafts removed: drafts are no longer displayed on this page */}
 
       {/* ── Forwarding Board ─────────────────────────────────────────────── */}
       <SectionCard
@@ -276,13 +212,15 @@ export default function SocietyApplicationsPage() {
           <div className="space-y-4">
             {queue.map((app) => {
               const meta = statusMeta[app.status] ?? { label: app.status, variant: 'default' as const };
+              // For budget_breakdown, the subject already includes the full title, so don't prepend the type label
+              const displaySubject = app.type === 'budget_breakdown' ? app.subject : `${typeLabels[app.type] ?? app.type} — ${app.subject}`;
               return (
                 <div key={app.id} className="rounded-2xl border border-border/70 p-5">
                   <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div>
                       <p className="text-base font-semibold text-foreground">{app.createdByName}</p>
                       <p className="text-sm text-muted-foreground">
-                        {typeLabels[app.type] ?? app.type} — {app.subject}
+                        {displaySubject}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -303,8 +241,10 @@ export default function SocietyApplicationsPage() {
                     >
                       {notesOpenId === app.id ? 'Hide notes' : 'Add / view notes'}
                     </Button>
-                    <Button variant="outline" size="sm">
-                      Print
+                    <Button variant="outline" size="sm" asChild>
+                      <a href={`/society/applications/${app.id}/pdf`} target="_blank" rel="noreferrer">
+                        View PDF
+                      </a>
                     </Button>
                     {app.status === 'submitted' && (
                       <Button

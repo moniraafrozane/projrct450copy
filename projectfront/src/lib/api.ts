@@ -868,8 +868,8 @@ export const applicationAPI = {
     return response.data;
   },
 
-  approveApplication: async (id: string): Promise<ApplicationResponse> => {
-    const response = await api.put(`/applications/${id}/approve`, {});
+  approveApplication: async (id: string, adminNotes?: string): Promise<ApplicationResponse> => {
+    const response = await api.put(`/applications/${id}/approve`, adminNotes ? { adminNotes } : {});
     return response.data;
   },
 

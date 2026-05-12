@@ -36,9 +36,22 @@ const STATUS_META: Record<
 const TYPE_LABELS: Record<string, string> = {
   fund_withdrawal: "Fund Withdrawal",
   event_approval: "Event Approval",
-  resource_request: "Resource Request",
+  resource_request: "Additional Budget",
   budget_breakdown: "Budget Breakdown",
 };
+
+function isStructuredBudgetBreakdown(app: SocietyApplication) {
+  if (app.type !== "budget_breakdown") {
+    return false;
+  }
+
+  const content = app.content;
+  return Boolean(
+    content &&
+      typeof content === "object" &&
+      Array.isArray((content as { sections?: unknown[] }).sections)
+  );
+}
 
 function formatDate(iso: string) {
   const d = new Date(iso);
@@ -101,16 +114,30 @@ export default function AdminDashboardPage() {
       .finally(() => setCommitteeLoading(false));
   }, []);
 
-  const oversightApplications = useMemo(
+  const eventApprovalApplications = useMemo(
+    () => applications.filter((app) => app.type === "event_approval"),
+    [applications]
+  );
+  const fundWithdrawalApplications = useMemo(
+    () => applications.filter((app) => app.type === "fund_withdrawal"),
+    [applications]
+  );
+
+  const additionalBudgetApplications = useMemo(
     () =>
       applications.filter(
-        (app) => app.type === "event_approval" || app.type === "resource_request"
+        (app) => app.type === "resource_request" || (app.type === "budget_breakdown" && !isStructuredBudgetBreakdown(app))
       ),
     [applications]
   );
 
-  const budgetApplications = useMemo(
-    () => applications.filter((app) => app.type === "fund_withdrawal" || app.type === "budget_breakdown"),
+  const budgetBreakdownApplications = useMemo(
+    () =>
+      applications.filter(
+        (app) =>
+          isStructuredBudgetBreakdown(app) &&
+          ["under_review", "submitted", "approved", "returned"].includes(app.status)
+      ),
     [applications]
   );
 
@@ -317,7 +344,10 @@ export default function AdminDashboardPage() {
   const renderApplicationCard = (app: SocietyApplication) => {
     const status = STATUS_META[app.status] ?? STATUS_META.submitted;
     const canReview = app.status === "submitted" || app.status === "under_review";
-    const pdfViewSupported = app.type === "fund_withdrawal" || app.type === "event_approval";
+    const isBudgetBreakdown = isStructuredBudgetBreakdown(app);
+    const viewHref = isBudgetBreakdown
+      ? `/admin/applications/${app.id}`
+      : `/admin/applications/${app.id}/pdf`;
 
     return (
       <div key={app.id} className="rounded-2xl border border-border/70 p-5">
@@ -352,7 +382,7 @@ export default function AdminDashboardPage() {
           <div className="flex gap-2">
             <Button className="flex-1" size="sm" variant="outline" asChild>
               <a
-                href={pdfViewSupported ? `/admin/applications/${app.id}/pdf` : `/admin/applications/${app.id}`}
+                href={viewHref}
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -397,32 +427,62 @@ export default function AdminDashboardPage() {
       )}
 
       <SectionCard
-        title="Sign-in oversight & approvals"
-        description="All event and resource request applications are reviewed here."
+        title="Event Approval"
+        description="Review and approve event applications submitted by societies."
       >
         {loading ? (
           <p className="text-sm text-muted-foreground">Loading applications...</p>
         ) : error ? (
           <p className="text-sm text-destructive">{error}</p>
-        ) : oversightApplications.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No event or resource request applications found.</p>
+        ) : eventApprovalApplications.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No event approval applications found.</p>
         ) : (
-          <div className="space-y-4">{oversightApplications.map((app) => renderApplicationCard(app))}</div>
+          <div className="space-y-4">{eventApprovalApplications.map((app) => renderApplicationCard(app))}</div>
         )}
       </SectionCard>
 
       <SectionCard
-        title="Budget governance"
-        description="All budget applications are reviewed here."
+        title="Fund Withdrawal"
+        description="Review and approve fund withdrawal requests from societies."
       >
         {loading ? (
           <p className="text-sm text-muted-foreground">Loading applications...</p>
         ) : error ? (
           <p className="text-sm text-destructive">{error}</p>
-        ) : budgetApplications.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No budget applications found.</p>
+        ) : fundWithdrawalApplications.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No fund withdrawal applications found.</p>
         ) : (
-          <div className="space-y-4">{budgetApplications.map((app) => renderApplicationCard(app))}</div>
+          <div className="space-y-4">{fundWithdrawalApplications.map((app) => renderApplicationCard(app))}</div>
+        )}
+      </SectionCard>
+
+      <SectionCard
+        title="Additional Budget"
+        description="Review additional budget requests from societies."
+      >
+        {loading ? (
+          <p className="text-sm text-muted-foreground">Loading applications...</p>
+        ) : error ? (
+          <p className="text-sm text-destructive">{error}</p>
+        ) : additionalBudgetApplications.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No additional budget applications found.</p>
+        ) : (
+          <div className="space-y-4">{additionalBudgetApplications.map((app) => renderApplicationCard(app))}</div>
+        )}
+      </SectionCard>
+
+      <SectionCard
+        title="Budget Breakdown"
+        description="Review budget breakdowns submitted by society members."
+      >
+        {loading ? (
+          <p className="text-sm text-muted-foreground">Loading applications...</p>
+        ) : error ? (
+          <p className="text-sm text-destructive">{error}</p>
+        ) : budgetBreakdownApplications.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No budget breakdown applications found.</p>
+        ) : (
+          <div className="space-y-4">{budgetBreakdownApplications.map((app) => renderApplicationCard(app))}</div>
         )}
       </SectionCard>
 

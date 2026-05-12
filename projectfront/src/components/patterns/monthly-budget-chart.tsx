@@ -119,7 +119,7 @@ export function MonthlyBudgetChart({ events, loading = false, emptyMessage }: Mo
                 position="top"
                 fill="#1f1f1f"
                 fontSize={12}
-                formatter={(value: number) => formatValueLabel(value)}
+                // formatter={(value: number) => formatValueLabel(value)}
               />
             </Bar>
           </BarChart>

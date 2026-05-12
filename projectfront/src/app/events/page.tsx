@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { SectionCard } from "@/components/patterns/section-card";
@@ -37,7 +37,7 @@ const SECTION_META: Record<EventStatus, { title: string; description: string }> 
   },
 };
 
-export default function PublicEventsPage() {
+function PublicEventsPageContent() {
   const searchParams = useSearchParams();
   const [eventsByStatus, setEventsByStatus] = useState<EventBuckets>(EMPTY_BUCKETS);
   const [loading, setLoading] = useState(true);
@@ -185,5 +185,32 @@ export default function PublicEventsPage() {
         <div key={status}>{renderSection(status)}</div>
       ))}
     </div>
+  );
+}
+
+function PublicEventsPageFallback() {
+  return (
+    <div className="space-y-10">
+      <section className="rounded-3xl border border-border/70 bg-card/80 p-8">
+        <h1 className="text-3xl font-semibold text-foreground md:text-4xl">All Events</h1>
+        <p className="mt-3 text-lg text-muted-foreground">
+          Browse upcoming, ongoing, and past CSE Society events in one place.
+        </p>
+      </section>
+
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {[1, 2, 3].map((i) => (
+          <Card key={i} className="h-80 animate-pulse bg-muted" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default function PublicEventsPage() {
+  return (
+    <Suspense fallback={<PublicEventsPageFallback />}>
+      <PublicEventsPageContent />
+    </Suspense>
   );
 }
