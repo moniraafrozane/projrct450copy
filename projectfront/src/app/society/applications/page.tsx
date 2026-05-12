@@ -22,7 +22,7 @@ const statusMeta: Record<
 const typeLabels: Record<string, string> = {
   fund_withdrawal: 'Fund Withdrawal',
   event_approval: 'Event Approval',
-  resource_request: 'Resource Request',
+  resource_request: 'Additional Budget',
   budget_breakdown: 'Budget Breakdown',
 };
 
