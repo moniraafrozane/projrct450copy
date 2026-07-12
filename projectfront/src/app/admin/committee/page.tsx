@@ -486,7 +486,7 @@ export default function CommitteePage() {
           <DialogHeader>
             <DialogTitle>Add Committee Member</DialogTitle>
             <DialogDescription>
-              Search for a user, pick a role, and assign them.
+              Search for a user, pick a role and assign them.
             </DialogDescription>
           </DialogHeader>
 

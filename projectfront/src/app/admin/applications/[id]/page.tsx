@@ -192,7 +192,7 @@ export default function AdminApplicationDetailPage() {
         </div>
       )}
 
-      <SectionCard title="Submission overview" description="Identity, status, and high-level submission details.">
+      <SectionCard title="Submission overview" description="Identity, status and high-level submission details.">
         {loading ? (
           <p className="text-sm text-muted-foreground">Loading application...</p>
         ) : !application ? (
@@ -256,37 +256,59 @@ export default function AdminApplicationDetailPage() {
               {budgetSections.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No budget sections found.</p>
               ) : (
-                <div className="overflow-hidden rounded-2xl border border-border/70 bg-background shadow-sm">
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full border-collapse text-sm">
-                      <thead className="sticky top-0 z-10 bg-muted/90 text-left text-xs uppercase tracking-wide text-muted-foreground backdrop-blur">
-                        <tr>
-                          <th className="border-b border-border/70 px-4 py-3 font-semibold">Category</th>
-                          <th className="border-b border-border/70 px-4 py-3 font-semibold text-right">Amount (BDT)</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {budgetSections.map((section, index) => (
-                          <tr key={`${section.key}-${index}`} className="align-top odd:bg-muted/10 even:bg-background">
-                            <td className="border-b border-r border-border/60 px-4 py-3 font-medium text-foreground">
-                              {section.title}
-                            </td>
-                            <td className="border-b border-border/60 px-4 py-3 text-right font-medium text-foreground tabular-nums">
-                              {Number(section.amount || 0).toLocaleString()}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot className="bg-muted/50 text-sm font-semibold text-foreground">
-                        <tr>
-                          <td className="border-t border-border/70 px-4 py-3">Calculated total</td>
-                          <td className="border-t border-border/70 px-4 py-3 text-right tabular-nums">
-                            BDT {Number(budgetContent.calculatedTotal || 0).toLocaleString()}
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-sm">
+                    <thead>
+                      <tr className="border-b-2 border-border bg-muted/50">
+                        <th className="border border-border/50 px-3 py-3 text-left font-semibold text-foreground">Date</th>
+                        <th className="border border-border/50 px-3 py-3 text-left font-semibold text-foreground">Purpose</th>
+                        <th className="border border-border/50 px-3 py-3 text-center font-semibold text-foreground">Voucher</th>
+                        <th colSpan={2} className="border border-border/50 px-3 py-3 text-left font-semibold text-foreground">
+                          Expenditure
+                        </th>
+                      </tr>
+                      <tr className="border-b border-border bg-muted/30">
+                        <th className="border border-border/50 px-3 py-2 text-center text-xs font-medium text-muted-foreground"></th>
+                        <th className="border border-border/50 px-3 py-2 text-center text-xs font-medium text-muted-foreground"></th>
+                        <th className="border border-border/50 px-3 py-2 text-center text-xs font-medium text-muted-foreground"></th>
+                        <th className="border border-border/50 px-3 py-2 text-center text-xs font-medium text-muted-foreground">Tab</th>
+                        <th className="border border-border/50 px-3 py-2 text-center text-xs font-medium text-muted-foreground">Comments</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {budgetSections.map((section, index) => (
+                        <tr key={`${section.key}-${index}`} className="border-b border-border hover:bg-muted/20">
+                          <td className="border border-border/50 px-3 py-3 text-sm text-muted-foreground">
+                            {budgetContent.eventDate ? new Date(budgetContent.eventDate).toLocaleDateString("en-GB") : "—"}
+                          </td>
+                          <td className="border border-border/50 px-3 py-3">
+                            <div>
+                              <p className="font-medium text-foreground">{section.title}</p>
+                              {section.helper && <p className="text-xs text-muted-foreground">{section.helper}</p>}
+                            </div>
+                          </td>
+                          <td className="border border-border/50 px-3 py-3 text-center text-sm text-muted-foreground">
+                            {index + 1}
+                          </td>
+                          <td className="border border-border/50 px-3 py-3 text-right font-semibold text-foreground">
+                            BDT {Number(section.amount || 0).toLocaleString()}
+                          </td>
+                          <td className="border border-border/50 px-3 py-3 text-sm text-muted-foreground">
+                            {section.notes || "—"}
                           </td>
                         </tr>
-                      </tfoot>
-                    </table>
-                  </div>
+                      ))}
+                      <tr className="border-t-2 border-border bg-muted/40 font-semibold">
+                        <td colSpan={3} className="border border-border/50 px-3 py-3 text-right text-foreground">
+                          Total
+                        </td>
+                        <td className="border border-border/50 px-3 py-3 text-right text-foreground">
+                          BDT {Number(budgetContent.totalAmount || budgetContent.calculatedTotal || 0).toLocaleString()}
+                        </td>
+                        <td className="border border-border/50 px-3 py-3"></td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
@@ -403,7 +425,7 @@ export default function AdminApplicationDetailPage() {
             </div>
 
             <p className="text-xs text-muted-foreground">
-              Rejecting requires an admin note. The same note is saved as the return reason, and it can also be attached to approvals.
+              Rejecting requires an admin note. The same note is saved as the return reason and it can also be attached to approvals.
             </p>
           </div>
         </SectionCard>

@@ -5,13 +5,18 @@ import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/patterns/page-header";
 import { SectionCard } from "@/components/patterns/section-card";
 import { MonthlyBudgetChart } from "@/components/patterns/monthly-budget-chart";
+import { SocietyFeeStatusCharts } from "@/components/patterns/society-fee-status-charts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   analyticsReportAPI,
+  studentAffairsAPI,
   type MonthlyBudgetEvent,
   type AnalyticsReport,
+  type FeeStatusBySession,
 } from "@/lib/api";
+
+const FEE_STATUS_REFRESH_INTERVAL_MS = 30_000;
 
 function formatMetricValue(metric: { value: number; format: "number" | "currency" }) {
   if (metric.format === "currency") {
@@ -40,6 +45,11 @@ export default function AdminReportsPage() {
   const [error, setError] = useState("");
   const [monthlyBudgetError, setMonthlyBudgetError] = useState("");
   const [message, setMessage] = useState("");
+
+  const [feeStatusOverall, setFeeStatusOverall] = useState({ paidCount: 0, unpaidCount: 0, total: 0 });
+  const [feeStatusBySession, setFeeStatusBySession] = useState<FeeStatusBySession[]>([]);
+  const [feeStatusLoading, setFeeStatusLoading] = useState(true);
+  const [feeStatusError, setFeeStatusError] = useState("");
 
   const loadReports = async () => {
     setLoading(true);
@@ -70,14 +80,36 @@ export default function AdminReportsPage() {
     }
   };
 
+  const loadFeeStatusSummary = async (silent = false) => {
+    if (!silent) setFeeStatusLoading(true);
+    setFeeStatusError("");
+
+    try {
+      const response = await studentAffairsAPI.getFeeStatusSummary();
+      setFeeStatusOverall(response.overall);
+      setFeeStatusBySession(response.bySession);
+    } catch {
+      // Keep showing the last known chart data on a silent background refresh failure.
+      if (!silent) setFeeStatusError("Failed to load society fee status.");
+    } finally {
+      if (!silent) setFeeStatusLoading(false);
+    }
+  };
+
   const refreshAnalytics = async () => {
     setMessage("");
     setError("");
-    await Promise.all([loadReports(), loadMonthlyBudget()]);
+    await Promise.all([loadReports(), loadMonthlyBudget(), loadFeeStatusSummary()]);
   };
 
   useEffect(() => {
     refreshAnalytics();
+  }, []);
+
+  // Keep the society fee status charts current as payments/receipts get reviewed elsewhere.
+  useEffect(() => {
+    const interval = setInterval(() => loadFeeStatusSummary(true), FEE_STATUS_REFRESH_INTERVAL_MS);
+    return () => clearInterval(interval);
   }, []);
 
   const openBuilder = () => {
@@ -102,7 +134,7 @@ export default function AdminReportsPage() {
     <div className="space-y-10">
       <PageHeader
         title="Analytics & exports"
-        description="Generate custom report snapshots for yearly events, budgets, and student participation."
+        description="Generate custom report snapshots for yearly events, budgets and student participation."
         actions={[
           { label: "Generate report", onClick: openBuilder },
           { label: "Refresh analytics", variant: "secondary", onClick: refreshAnalytics },
@@ -176,6 +208,15 @@ export default function AdminReportsPage() {
           </div>
         )}
       </SectionCard>
+
+      <div className="rounded-2xl border border-border/70 p-6">
+        <SocietyFeeStatusCharts
+          overall={feeStatusOverall}
+          bySession={feeStatusBySession}
+          loading={feeStatusLoading}
+          error={feeStatusError}
+        />
+      </div>
 
       <div className="rounded-2xl border border-border/70 p-6">
         {monthlyBudgetError ? (

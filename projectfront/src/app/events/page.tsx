@@ -171,7 +171,7 @@ function PublicEventsPageContent() {
         <p className="mt-3 text-lg text-muted-foreground">
           {activeStatus
             ? SECTION_META[activeStatus].description
-            : "Browse upcoming, ongoing, and past CSE Society events in one place."}
+            : "Browse upcoming, ongoing and past CSE Society events in one place."}
         </p>
       </section>
 
@@ -194,7 +194,7 @@ function PublicEventsPageFallback() {
       <section className="rounded-3xl border border-border/70 bg-card/80 p-8">
         <h1 className="text-3xl font-semibold text-foreground md:text-4xl">All Events</h1>
         <p className="mt-3 text-lg text-muted-foreground">
-          Browse upcoming, ongoing, and past CSE Society events in one place.
+          Browse upcoming, ongoing and past CSE Society events in one place.
         </p>
       </section>
 

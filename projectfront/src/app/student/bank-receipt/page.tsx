@@ -34,6 +34,8 @@ export default function StudentBankReceiptPage() {
   const [reference, setReference] = useState("");
   const [paymentDate, setPaymentDate] = useState("");
   const [amount, setAmount] = useState("");
+  const [semester, setSemester] = useState("");
+  const [session, setSession] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -62,6 +64,8 @@ export default function StudentBankReceiptPage() {
     setReference("");
     setPaymentDate("");
     setAmount("");
+    setSemester("");
+    setSession("");
     setFile(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
@@ -76,7 +80,7 @@ export default function StudentBankReceiptPage() {
     setMessage("");
     setError("");
 
-    if (!reference.trim() || !paymentDate || !amount || !file) {
+    if (!reference.trim() || !paymentDate || !amount || !semester || !session.trim() || !file) {
       setError("Please fill all required fields and attach a receipt file.");
       return;
     }
@@ -95,6 +99,8 @@ export default function StudentBankReceiptPage() {
         reference: reference.trim(),
         paymentDate,
         amount: numericAmount,
+        semester,
+        session: session.trim(),
         fileUrl: uploadRes.fileUrl,
         fileName: uploadRes.fileName,
         mimeType: uploadRes.mimeType,
@@ -103,8 +109,12 @@ export default function StudentBankReceiptPage() {
       setMessage("Receipt submitted. Student Affairs will review it shortly.");
       resetForm();
       await loadMyReceipts();
-    } catch {
-      setError("Failed to submit receipt. Please try again.");
+    } catch (err) {
+      const apiMessage =
+        err && typeof err === "object" && "response" in err
+          ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+          : undefined;
+      setError(apiMessage || "Failed to submit receipt. Please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -185,6 +195,33 @@ export default function StudentBankReceiptPage() {
                 onChange={(e) => setAmount(e.target.value)}
               />
             </label>
+            <label className="flex flex-col gap-2 text-sm">
+              Semester *
+              <select
+                className="rounded-2xl border border-border/70 bg-background px-4 py-3 text-base text-foreground"
+                value={semester}
+                onChange={(e) => setSemester(e.target.value)}
+              >
+                <option value="">Select semester</option>
+                <option value="1st">1st</option>
+                <option value="2nd">2nd</option>
+                <option value="3rd">3rd</option>
+                <option value="4th">4th</option>
+                <option value="5th">5th</option>
+                <option value="6th">6th</option>
+                <option value="7th">7th</option>
+                <option value="8th">8th</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-2 text-sm">
+              Session *
+              <input
+                className="rounded-2xl border border-border/70 bg-background px-4 py-3 text-base text-foreground"
+                placeholder="2023-24"
+                value={session}
+                onChange={(e) => setSession(e.target.value)}
+              />
+            </label>
           </div>
 
           <div className="flex items-center gap-3">
@@ -216,6 +253,9 @@ export default function StudentBankReceiptPage() {
                       <p className="text-xs text-muted-foreground">
                         Paid on {formatDate(receipt.payment.paymentDate)} · Amount: ৳
                         {receipt.payment.amount.toFixed(2)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Semester: {receipt.payment.semester || "N/A"} · Session: {receipt.payment.session || "N/A"}
                       </p>
                       <p className="text-xs text-muted-foreground">Submitted: {formatDate(receipt.createdAt)}</p>
                     </div>

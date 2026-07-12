@@ -32,7 +32,7 @@ export default function StudentReceiptsPage() {
     <div className="space-y-10">
       <PageHeader
         title="Receipts & certificates"
-        description="Access payment confirmations, admin approvals, and downloadable certificates."
+        description="Access payment confirmations, admin approvals and downloadable certificates."
         actions={[{ label: "Download all", href: "#", variant: "outline" }]}
       />
 

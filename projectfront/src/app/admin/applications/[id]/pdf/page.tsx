@@ -107,12 +107,6 @@ export default function AdminApplicationPdfPage() {
   const handlePrint = async () => {
     if (!id) return;
 
-    const printWindow = window.open("", "_blank", "noopener,noreferrer");
-    if (!printWindow) {
-      setError("Popup was blocked. Please allow popups and try again.");
-      return;
-    }
-
     try {
       setPrinting(true);
       setError("");
@@ -120,21 +114,25 @@ export default function AdminApplicationPdfPage() {
       const pdfRes = await applicationAPI.getApplicationPrintFile(id);
       const objectUrl = URL.createObjectURL(pdfRes.blob);
 
-      printWindow.location.href = objectUrl;
-      printWindow.addEventListener(
-        "load",
-        () => {
-          printWindow.focus();
-          printWindow.print();
-        },
-        { once: true }
-      );
+      const iframe = document.createElement("iframe");
+      iframe.style.position = "fixed";
+      iframe.style.width = "0";
+      iframe.style.height = "0";
+      iframe.style.border = "0";
+      iframe.src = objectUrl;
+
+      iframe.onload = () => {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      };
+
+      document.body.appendChild(iframe);
 
       setTimeout(() => {
         URL.revokeObjectURL(objectUrl);
+        iframe.remove();
       }, 60_000);
     } catch (printError: unknown) {
-      printWindow.close();
       setError(getErrorMessage(printError, "Failed to open printable PDF."));
     } finally {
       setPrinting(false);

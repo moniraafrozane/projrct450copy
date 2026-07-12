@@ -36,7 +36,7 @@ export default function AdminApplicationsPage() {
         actions={[{ label: "View analytics", href: "/admin/reports", variant: "outline" }]}
       />
 
-      <SectionCard title="Queue" description="Each decision records actor, comment, and timestamp.">
+      <SectionCard title="Queue" description="Each decision records actor, comment and timestamp.">
         <div className="overflow-hidden rounded-2xl border border-border/70">
           <table className="w-full text-left text-sm">
             <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">

@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "CSE Society Budget & Event Management",
   description:
-    "Role-specific workspaces for students, admins, and society members overseeing campus budgets and events.",
+    "Role-specific workspaces for students, admins and society members overseeing campus budgets and events.",
 };
 
 export default function RootLayout({
