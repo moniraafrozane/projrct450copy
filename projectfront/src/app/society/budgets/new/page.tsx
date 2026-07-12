@@ -580,6 +580,7 @@ export default function NewBudgetPage() {
             >
               {saving ? "Saving..." : isEditMode ? "Update budget" : "Save budget draft"}
             </Button>
+            
             <Button
               onClick={handleForwardToAdmin}
               disabled={saving || forwarding || loadingEvents || loadingExisting}

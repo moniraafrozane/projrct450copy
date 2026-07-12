@@ -121,7 +121,7 @@ export default function SocietyEventPlannerPage() {
       const isCreated = response?.data?.success || response?.status === 201;
 
       if (isCreated) {
-        setSuccess("Event created successfully");
+        setSuccess("event was created successfully");
         setTimeout(() => {
           router.push('/society');
         }, 3000);
@@ -199,6 +199,9 @@ export default function SocietyEventPlannerPage() {
                 <option value="Sport">Sport</option>
                 <option value="Workshop">Workshop</option>
                 <option value="Seminar">Seminar</option>
+                <option value="AI / Machine Learning">AI / Machine Learning</option>
+                <option value="Project Showcase / Exhibition">Project Showcase / Exhibition</option>
+                <option value="Robotics / IoT">Robotics / IoT</option>
               </select>
             </div>
 

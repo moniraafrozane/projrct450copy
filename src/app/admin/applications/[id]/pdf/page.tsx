@@ -1,18 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { PageHeader } from "@/components/patterns/page-header";
 import { SectionCard } from "@/components/patterns/section-card";
 import { Button } from "@/components/ui/button";
 import { applicationAPI, type SocietyApplication } from "@/lib/api";
 
+const PDF_SUPPORTED_TYPES = new Set(["fund_withdrawal", "event_approval"]);
+
 function getIdFromParams(idParam: string | string[] | undefined): string | null {
   if (Array.isArray(idParam)) return idParam[0] ?? null;
   return idParam ?? null;
 }
 
-export default function SocietyApplicationPdfPage() {
+export default function AdminApplicationPdfPage() {
   const params = useParams();
   const id = getIdFromParams(params?.id as string | string[] | undefined);
 
@@ -22,6 +24,11 @@ export default function SocietyApplicationPdfPage() {
   const [downloading, setDownloading] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [error, setError] = useState("");
+
+  const isSupportedType = useMemo(
+    () => (application ? PDF_SUPPORTED_TYPES.has(application.type) : true),
+    [application]
+  );
 
   const getErrorMessage = (err: unknown, fallback: string) => {
     if (
@@ -58,6 +65,11 @@ export default function SocietyApplicationPdfPage() {
         if (!active) return;
         setApplication(appRes.application);
 
+        if (!PDF_SUPPORTED_TYPES.has(appRes.application.type)) {
+          setLoading(false);
+          return;
+        }
+
         const pdfRes = await applicationAPI.getApplicationPdfFile(id);
         if (!active) return;
 
@@ -84,7 +96,7 @@ export default function SocietyApplicationPdfPage() {
   }, [id]);
 
   const handleDownload = async () => {
-    if (!id) return;
+    if (!id || !isSupportedType) return;
 
     try {
       setDownloading(true);
@@ -105,7 +117,13 @@ export default function SocietyApplicationPdfPage() {
   };
 
   const handlePrint = async () => {
-    if (!id) return;
+    if (!id || !isSupportedType) return;
+
+    const printWindow = window.open("", "_blank", "noopener,noreferrer");
+    if (!printWindow) {
+      setError("Popup was blocked. Please allow popups and try again.");
+      return;
+    }
 
     try {
       setPrinting(true);
@@ -114,25 +132,21 @@ export default function SocietyApplicationPdfPage() {
       const pdfRes = await applicationAPI.getApplicationPrintFile(id);
       const objectUrl = URL.createObjectURL(pdfRes.blob);
 
-      const iframe = document.createElement("iframe");
-      iframe.style.position = "fixed";
-      iframe.style.width = "0";
-      iframe.style.height = "0";
-      iframe.style.border = "0";
-      iframe.src = objectUrl;
-
-      iframe.onload = () => {
-        iframe.contentWindow?.focus();
-        iframe.contentWindow?.print();
-      };
-
-      document.body.appendChild(iframe);
+      printWindow.location.href = objectUrl;
+      printWindow.addEventListener(
+        "load",
+        () => {
+          printWindow.focus();
+          printWindow.print();
+        },
+        { once: true }
+      );
 
       setTimeout(() => {
         URL.revokeObjectURL(objectUrl);
-        iframe.remove();
       }, 60_000);
     } catch (printError: unknown) {
+      printWindow.close();
       setError(getErrorMessage(printError, "Failed to open printable PDF."));
     } finally {
       setPrinting(false);
@@ -142,10 +156,13 @@ export default function SocietyApplicationPdfPage() {
   return (
     <div className="space-y-8">
       <PageHeader
-        eyebrow="Society"
+        eyebrow="Admin"
         title="Application PDF"
-        description="View the submitted application in PDF form and keep a copy for your records."
-        actions={[{ label: "Back to applications", href: "/society/applications", variant: "outline" }]}
+        description="View the submitted application in formal letter format and download a copy."
+        actions={[
+          { label: "Back to admin dashboard", href: "/admin", variant: "outline" },
+          { label: "Open review details", href: id ? `/admin/applications/${id}` : "/admin", variant: "outline" },
+        ]}
       />
 
       {error && (
@@ -156,12 +173,21 @@ export default function SocietyApplicationPdfPage() {
 
       <SectionCard
         title="Application document"
-        description="This PDF mirrors the original letter-style application submitted by the society member."
+        description="This PDF mirrors the original letter-style application submitted by society members."
       >
         {loading ? (
           <p className="text-sm text-muted-foreground">Loading PDF...</p>
         ) : !application ? (
           <p className="text-sm text-muted-foreground">Application not found.</p>
+        ) : !isSupportedType ? (
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              PDF view is currently available for Fund Withdrawal and Event Approval applications only.
+            </p>
+            <Button variant="outline" asChild>
+              <a href={`/admin/applications/${application.id}`}>Open standard review page</a>
+            </Button>
+          </div>
         ) : (
           <div className="space-y-4">
             <div className="flex flex-wrap gap-2">

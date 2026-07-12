@@ -87,7 +87,7 @@ export default function BudgetDetailPage() {
       <PageHeader
         eyebrow="Budget workspace"
         title={content.eventTitle || budget?.subject || "Budget details"}
-        description="Review the created budget breakdown, category notes, and total amount."
+        description="Review the created budget breakdown, category notes and total amount."
         actions={[{ label: "Back to budgets", href: "/society/budgets", variant: "outline" }]}
       />
 
@@ -143,22 +143,59 @@ export default function BudgetDetailPage() {
           {sections.length === 0 ? (
             <p className="text-sm text-muted-foreground">No budget sections found.</p>
           ) : (
-            <div className="space-y-4">
-              {sections.map((section, index) => (
-                <div key={`${section.key}-${index}`} className="rounded-2xl border border-border/70 p-4">
-                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <p className="font-semibold text-foreground">{section.title}</p>
-                      <p className="text-sm text-muted-foreground">{section.helper}</p>
-                    </div>
-                    <p className="text-sm font-semibold text-foreground">BDT {Number(section.amount || 0).toLocaleString()}</p>
-                  </div>
-                  {section.notes && <p className="mt-3 text-sm text-muted-foreground">{section.notes}</p>}
-                  {section.optional && (
-                    <p className="mt-2 text-xs text-muted-foreground">Marked as optional</p>
-                  )}
-                </div>
-              ))}
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr className="border-b-2 border-border bg-muted/50">
+                    <th className="border border-border/50 px-3 py-3 text-left font-semibold text-foreground">Date</th>
+                    <th className="border border-border/50 px-3 py-3 text-left font-semibold text-foreground">Purpose</th>
+                    <th className="border border-border/50 px-3 py-3 text-center font-semibold text-foreground">Voucher</th>
+                    <th colSpan={2} className="border border-border/50 px-3 py-3 text-left font-semibold text-foreground">
+                      Expenditure
+                    </th>
+                  </tr>
+                  <tr className="border-b border-border bg-muted/30">
+                    <th className="border border-border/50 px-3 py-2 text-center text-xs font-medium text-muted-foreground"></th>
+                    <th className="border border-border/50 px-3 py-2 text-center text-xs font-medium text-muted-foreground"></th>
+                    <th className="border border-border/50 px-3 py-2 text-center text-xs font-medium text-muted-foreground"></th>
+                    <th className="border border-border/50 px-3 py-2 text-center text-xs font-medium text-muted-foreground">Tab</th>
+                    <th className="border border-border/50 px-3 py-2 text-center text-xs font-medium text-muted-foreground">Comments</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sections.map((section, index) => (
+                    <tr key={`${section.key}-${index}`} className="border-b border-border hover:bg-muted/20">
+                      <td className="border border-border/50 px-3 py-3 text-sm text-muted-foreground">
+                        {content.eventDate ? new Date(content.eventDate).toLocaleDateString("en-GB") : "—"}
+                      </td>
+                      <td className="border border-border/50 px-3 py-3">
+                        <div>
+                          <p className="font-medium text-foreground">{section.title}</p>
+                          {section.helper && <p className="text-xs text-muted-foreground">{section.helper}</p>}
+                        </div>
+                      </td>
+                      <td className="border border-border/50 px-3 py-3 text-center text-sm text-muted-foreground">
+                        {index + 1}
+                      </td>
+                      <td className="border border-border/50 px-3 py-3 text-right font-semibold text-foreground">
+                        BDT {Number(section.amount || 0).toLocaleString()}
+                      </td>
+                      <td className="border border-border/50 px-3 py-3 text-sm text-muted-foreground">
+                        {section.notes || "—"}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr className="border-t-2 border-border bg-muted/40 font-semibold">
+                    <td colSpan={3} className="border border-border/50 px-3 py-3 text-right text-foreground">
+                      Total
+                    </td>
+                    <td className="border border-border/50 px-3 py-3 text-right text-foreground">
+                      BDT {Number(content.totalAmount || totalFromSections).toLocaleString()}
+                    </td>
+                    <td className="border border-border/50 px-3 py-3"></td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           )}
         </SectionCard>

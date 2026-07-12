@@ -85,7 +85,7 @@ export default function SocietyBudgetsPage() {
     <div className="space-y-10">
       <PageHeader
         title="Budget workspace"
-        description="Create, prepare, revise, and resubmit budgets before admin approval."
+        description="Create, prepare, revise and resubmit budgets before admin approval."
         actions={[{ label: "New budget", href: "/society/budgets/new" }]}
       />
 

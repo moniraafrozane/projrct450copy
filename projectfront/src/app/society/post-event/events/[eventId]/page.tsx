@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { PageHeader } from "@/components/patterns/page-header";
 import { SectionCard } from "@/components/patterns/section-card";
@@ -19,6 +18,15 @@ import {
 
 function formatStatus(status: EventReport["status"]) {
   return status.replace("_", " ");
+}
+
+function getErrorMessage(err: unknown, fallback: string) {
+  if (typeof err === "object" && err !== null && "response" in err) {
+    const response = (err as { response?: { data?: { message?: string } } }).response;
+    return response?.data?.message || fallback;
+  }
+
+  return fallback;
 }
 
 export default function PostEventDetailPage() {
@@ -62,27 +70,29 @@ export default function PostEventDetailPage() {
 
   const canEdit = useMemo(() => {
     if (!report) return true;
-    return report.status === "draft" || report.status === "returned";
+    return report.status !== "approved";
   }, [report]);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
-      const [eventRes, reportsRes, budgetRes] = await Promise.all([
+
+      const [eventRes, budgetRes] = await Promise.all([
         eventAPI.getEventById(eventId),
-        postEventAPI.getReports(eventId),
         postEventAPI.getBudgetComparison(eventId),
       ]);
 
       setEvent(eventRes.event);
       setBudgetComparison(budgetRes.budgetComparison || null);
 
-      const reports = reportsRes.reports || [];
-      let selected = reports[0] || null;
+      let selected: EventReport | null = null;
       if (reportIdFromQuery) {
-        const found = reports.find((r: EventReport) => r.id === reportIdFromQuery);
-        if (found) selected = found;
+        const reportRes = await postEventAPI.getReport(eventId, reportIdFromQuery);
+        selected = reportRes.report || null;
+      } else {
+        const reportsRes = await postEventAPI.getReports(eventId);
+        selected = reportsRes.reports?.[0] || null;
       }
 
       if (selected) {
@@ -124,17 +134,17 @@ export default function PostEventDetailPage() {
           actual: budgetRes?.budgetComparison?.actual?.total ? Number(budgetRes.budgetComparison.actual.total) : "",
         });
       }
-    } catch (err: any) {
-      setError(err?.response?.data?.message || "Failed to load event report");
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to load event report"));
     } finally {
       setLoading(false);
     }
-  };
+  }, [eventId, reportIdFromQuery]);
 
   useEffect(() => {
     if (!eventId) return;
     load();
-  }, [eventId]);
+  }, [eventId, load]);
 
   const createReportIfMissing = async () => {
     if (report) return report;
@@ -144,31 +154,36 @@ export default function PostEventDetailPage() {
     return created.report;
   };
 
+  const saveCurrentReport = async () => {
+    const activeReport = await createReportIfMissing();
+    const response = await postEventAPI.updateReport(eventId, activeReport.id, {
+      attendanceRecord: {
+        totalRegistered: Number(attendance.totalRegistered) || 0,
+        totalAttended: Number(attendance.totalAttended) || 0,
+        attendeeList: [],
+      },
+      eventInsights: {
+        ...insights,
+        budgetPlannedTotal: budgetInputs.planned === "" ? null : Number(budgetInputs.planned),
+        budgetActualTotal: budgetInputs.actual === "" ? null : Number(budgetInputs.actual),
+      },
+      expenseNotes,
+    });
+
+    setReport(response.report);
+    return response.report;
+  };
+
   const handleSave = async () => {
     try {
       setSaving(true);
       setError("");
       setMessage("");
 
-      const activeReport = await createReportIfMissing();
-      const res = await postEventAPI.updateReport(eventId, activeReport.id, {
-        attendanceRecord: {
-          totalRegistered: Number(attendance.totalRegistered) || 0,
-          totalAttended: Number(attendance.totalAttended) || 0,
-          attendeeList: [],
-        },
-        eventInsights: {
-          ...insights,
-          budgetPlannedTotal: budgetInputs.planned === "" ? null : Number(budgetInputs.planned),
-          budgetActualTotal: budgetInputs.actual === "" ? null : Number(budgetInputs.actual),
-        },
-        expenseNotes,
-      });
-
-      setReport(res.report);
+      await saveCurrentReport();
       setMessage("Post-event report saved.");
-    } catch (err: any) {
-      setError(err?.response?.data?.message || "Failed to save report");
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to save report"));
     } finally {
       setSaving(false);
     }
@@ -184,11 +199,15 @@ export default function PostEventDetailPage() {
       setError("");
       setMessage("");
 
+      if (canEdit) {
+        await saveCurrentReport();
+      }
+
       const res = await postEventAPI.submitReport(eventId, report.id);
       setReport(res.report);
       setMessage("Report submitted for admin review.");
-    } catch (err: any) {
-      setError(err?.response?.data?.message || "Failed to submit report");
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to submit report"));
     } finally {
       setSubmitting(false);
     }
@@ -199,7 +218,7 @@ export default function PostEventDetailPage() {
       <PageHeader
         eyebrow="Post-event"
         title={event ? `${event.title} — Report` : "Post-event report"}
-        description="Add Attendance, Expense notes, Event Insights, and review Planned vs Actual budget."
+        description="Add Attendance, Expense notes, Event Insights and review Planned vs Actual budget."
         actions={[
           { label: "← Back to post-event", href: "/society/post-event", variant: "outline" },
         ]}
@@ -231,7 +250,7 @@ export default function PostEventDetailPage() {
               <Button onClick={handleSave} disabled={saving || !canEdit}>
                 {saving ? "Saving..." : "Save Draft"}
               </Button>
-              <Button variant="outline" onClick={handleSubmit} disabled={submitting || !report || !canEdit}>
+              <Button variant="outline" onClick={handleSubmit} disabled={submitting || !report || report.status === "approved"}>
                 {submitting ? "Submitting..." : "Submit for Review"}
               </Button>
             </div>
@@ -277,7 +296,7 @@ export default function PostEventDetailPage() {
 
           <SectionCard
             title="Event Report / Insights"
-            description="Add highlights, challenges, improvements, and final assessment."
+            description="Add highlights, challenges, improvements and final assessment."
           >
             <div className="space-y-4">
               <div className="space-y-2">
@@ -334,76 +353,77 @@ export default function PostEventDetailPage() {
 
           <SectionCard
             title="Budget Comparison"
-            description="Planned budget vs Actual expense compare from backend aggregation."
+            description="Add planned and actual budget totals for this post-event report."
           >
-            {!budgetComparison ? (
-              <p className="text-sm text-muted-foreground">No budget comparison data available.</p>
-            ) : (
-              <div className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-4">
-                  <div className="rounded-xl border border-border/70 p-4">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Planned</p>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={budgetInputs.planned}
-                      onChange={(e) =>
-                        setBudgetInputs((prev) => ({
-                          ...prev,
-                          planned: e.target.value === "" ? "" : Number(e.target.value),
-                        }))
-                      }
-                      disabled={!canEdit}
-                      placeholder="Enter planned amount"
-                      className="mt-2"
-                    />
-                  </div>
-                  <div className="rounded-xl border border-border/70 p-4">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Actual</p>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={budgetInputs.actual}
-                      onChange={(e) =>
-                        setBudgetInputs((prev) => ({
-                          ...prev,
-                          actual: e.target.value === "" ? "" : Number(e.target.value),
-                        }))
-                      }
-                      disabled={!canEdit}
-                      placeholder="Enter actual amount"
-                      className="mt-2"
-                    />
-                  </div>
-                  <div className="rounded-xl border border-border/70 p-4">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Variance</p>
-                    <p className="mt-1 text-lg font-semibold">
-                      {budgetInputs.planned === "" && budgetInputs.actual === ""
-                        ? ""
-                        : `BDT ${(
-                            (budgetInputs.actual === "" ? 0 : Number(budgetInputs.actual)) -
-                            (budgetInputs.planned === "" ? 0 : Number(budgetInputs.planned))
-                          ).toLocaleString()}`}
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-border/70 p-4">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Summary</p>
-                    <p className="mt-1 text-lg font-semibold">
-                      {budgetInputs.planned === "" && budgetInputs.actual === ""
-                        ? ""
+            <div className="space-y-4">
+              {!budgetComparison && (
+                <p className="text-sm text-muted-foreground">
+                  No approved budget or voucher aggregation was found, but you can enter totals manually.
+                </p>
+              )}
+              <div className="grid gap-4 md:grid-cols-4">
+                <div className="rounded-xl border border-border/70 p-4">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Planned</p>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={budgetInputs.planned}
+                    onChange={(e) =>
+                      setBudgetInputs((prev) => ({
+                        ...prev,
+                        planned: e.target.value === "" ? "" : Number(e.target.value),
+                      }))
+                    }
+                    disabled={!canEdit}
+                    placeholder="Enter planned amount"
+                    className="mt-2"
+                  />
+                </div>
+                <div className="rounded-xl border border-border/70 p-4">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Actual</p>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={budgetInputs.actual}
+                    onChange={(e) =>
+                      setBudgetInputs((prev) => ({
+                        ...prev,
+                        actual: e.target.value === "" ? "" : Number(e.target.value),
+                      }))
+                    }
+                    disabled={!canEdit}
+                    placeholder="Enter actual amount"
+                    className="mt-2"
+                  />
+                </div>
+                <div className="rounded-xl border border-border/70 p-4">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Variance</p>
+                  <p className="mt-1 text-lg font-semibold">
+                    {budgetInputs.planned === "" && budgetInputs.actual === ""
+                      ? ""
+                      : `BDT ${(
+                          (budgetInputs.actual === "" ? 0 : Number(budgetInputs.actual)) -
+                          (budgetInputs.planned === "" ? 0 : Number(budgetInputs.planned))
+                        ).toLocaleString()}`}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border/70 p-4">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Summary</p>
+                  <p className="mt-1 text-lg font-semibold">
+                    {budgetInputs.planned === "" && budgetInputs.actual === ""
+                      ? ""
+                      : (budgetInputs.actual === "" ? 0 : Number(budgetInputs.actual)) -
+                          (budgetInputs.planned === "" ? 0 : Number(budgetInputs.planned)) > 0
+                        ? "Over budget"
                         : (budgetInputs.actual === "" ? 0 : Number(budgetInputs.actual)) -
-                            (budgetInputs.planned === "" ? 0 : Number(budgetInputs.planned)) > 0
-                          ? "Over budget"
-                          : (budgetInputs.actual === "" ? 0 : Number(budgetInputs.actual)) -
-                                (budgetInputs.planned === "" ? 0 : Number(budgetInputs.planned)) <
-                              0
-                            ? "Under budget"
-                            : "On budget"}
-                    </p>
-                  </div>
+                              (budgetInputs.planned === "" ? 0 : Number(budgetInputs.planned)) <
+                            0
+                          ? "Under budget"
+                          : "On budget"}
+                  </p>
                 </div>
               </div>
-            )}
+            </div>
           </SectionCard>
         </>
       )}
