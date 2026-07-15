@@ -171,7 +171,7 @@ export default function SocietyApplicationsPage() {
     <div className="space-y-10">
       <PageHeader
         title="Event Applications"
-        description="Create applications, and forward them to admins."
+        description="Create applications and forward them to admins."
         actions={[
           {
             label: 'Generate application',

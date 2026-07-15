@@ -8,6 +8,7 @@ const links = [
   { href: "/society/event-planner", label: "Event planner" },
   { href: "/society/applications", label: "Applications" },
   { href: "/society/budgets", label: "Budgets" },
+  { href: "/society/society-fee", label: "Society fee" },
   { href: "/society/vouchers", label: "Vouchers" },
   { href: "/society/post-event", label: "Post-event" },
 ];
@@ -25,7 +26,7 @@ export default function SocietyLayout({ children }: { children: ReactNode }) {
             <div>
               <h1 className="text-2xl font-semibold text-foreground">Society Ops Studio</h1>
               <p className="text-sm text-muted-foreground">
-                Manage budgets, pass student applications to admins, and submit post-event reports.
+                Manage budgets, pass student applications to admins and submit post-event reports.
               </p>
             </div>
             <ModuleNav items={links} />

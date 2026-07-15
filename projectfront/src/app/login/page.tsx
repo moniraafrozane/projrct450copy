@@ -83,7 +83,7 @@ function LoginPageContent() {
       <PageHeader
         eyebrow="Single entry point"
         title="Unified login portal"
-        description="Select your role, enter your credentials, and we'll take you straight to your dashboard."
+        description="Select your role, enter your credentials and we'll take you straight to your dashboard."
         actions={[{ label: "Return home", href: "/", variant: "outline" }]}
       />
 

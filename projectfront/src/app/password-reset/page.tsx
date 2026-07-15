@@ -8,7 +8,7 @@ export default function PasswordResetPage() {
       <PageHeader
         eyebrow="Self-service recovery"
         title="Forgot password"
-        description="Students, admins, and society members can recover access from this single workflow."
+        description="Students, admins and society members can recover access from this single workflow."
         actions={[{ label: "Back to login", href: "/login", variant: "outline" }]}
       />
 

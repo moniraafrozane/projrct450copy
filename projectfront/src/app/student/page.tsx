@@ -6,13 +6,12 @@ import { SectionCard } from "@/components/patterns/section-card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { EventRegistrationModal } from "@/components/ui/event-registration-modal";
-import api, { Event, eventAPI } from "@/lib/api";
+import api, { Event, EventRegistration, eventAPI } from "@/lib/api";
 import { demoUpcomingEvents } from "@/data/events";
 
 type PastEventStatusItem = {
   event: Event;
   isRegistered: boolean;
-  attendanceStatus: "Attended" | "Not attended" | "N/A";
 };
 
 const CATEGORY_ALIAS_MAP: Record<string, string[]> = {
@@ -22,6 +21,9 @@ const CATEGORY_ALIAS_MAP: Record<string, string[]> = {
   Sports: ["sports", "sport", "athletic"],
   Workshop: ["workshop", "training", "bootcamp"],
   Seminar: ["seminar", "webinar", "lecture", "talk"],
+  "AI / Machine Learning": ["ai", "machine learning", "ml", "artificial intelligence"],
+  "Project Showcase / Exhibition": ["project showcase", "exhibition", "showcase", "demo day"],
+  "Robotics / IoT": ["robotics", "robot", "iot", "internet of things"],
 };
 
 const normalizeCategoryText = (value: string) =>
@@ -50,6 +52,9 @@ export default function StudentDashboardPage() {
   const [loadingEventId, setLoadingEventId] = useState<string | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [userInfo, setUserInfo] = useState({ name: "", email: "", phone: "", studentId: "" });
+  const [registeredEventIds, setRegisteredEventIds] = useState<Set<string>>(new Set());
+  const [registrationSuccess, setRegistrationSuccess] = useState(false);
+  const [successEventTitle, setSuccessEventTitle] = useState("");
 
   useEffect(() => {
     const fetchUpcomingEvents = async () => {
@@ -84,8 +89,24 @@ export default function StudentDashboardPage() {
       }
     };
 
+    const fetchMyRegistrations = async () => {
+      try {
+        const response = await eventAPI.getMyRegistrations();
+        const registrations: EventRegistration[] = Array.isArray(response.registrations)
+          ? response.registrations
+          : [];
+        const activeEventIds = registrations
+          .filter((registration) => registration.status !== "cancelled")
+          .map((registration) => registration.eventId);
+        setRegisteredEventIds(new Set(activeEventIds));
+      } catch (error) {
+        console.error("Error fetching registrations:", error);
+      }
+    };
+
     fetchUpcomingEvents();
     fetchUserInfo();
+    fetchMyRegistrations();
   }, []);
 
   useEffect(() => {
@@ -139,40 +160,30 @@ export default function StudentDashboardPage() {
         setPastEventsLoading(true);
         setPastEventsError("");
 
-        const [completedEventsRes, registrationsRes] = await Promise.all([
-          eventAPI.getAllEvents({ status: "completed" }),
+        const [allEventsRes, registrationsRes] = await Promise.all([
+          eventAPI.getAllEvents(),
           eventAPI.getMyRegistrations(),
         ]);
 
-        const completedEvents = Array.isArray(completedEventsRes.events)
-          ? completedEventsRes.events
-          : [];
+        const allEvents = Array.isArray(allEventsRes.events) ? allEventsRes.events : [];
 
         const registrations = Array.isArray(registrationsRes.registrations)
           ? registrationsRes.registrations
           : [];
 
-        const registrationLookup = new Map(
+        const registeredEventIdSet = new Set(
           registrations
-            .filter((registration) => !!registration?.eventId)
-            .map((registration) => [registration.eventId, registration])
+            .filter((registration) => !!registration?.eventId && registration.status !== "cancelled")
+            .map((registration) => registration.eventId)
         );
 
-        const joinedStatuses: PastEventStatusItem[] = completedEvents.map((event) => {
-          const registration = registrationLookup.get(event.id);
-          const isRegistered = !!registration;
-
-          let attendanceStatus: "Attended" | "Not attended" | "N/A" = "N/A";
-          if (isRegistered) {
-            attendanceStatus = registration.attended ? "Attended" : "Not attended";
-          }
-
-          return {
+        const joinedStatuses: PastEventStatusItem[] = allEvents
+          .filter((event) => event.status === "completed" || registeredEventIdSet.has(event.id))
+          .map((event) => ({
             event,
-            isRegistered,
-            attendanceStatus,
-          };
-        });
+            isRegistered: registeredEventIdSet.has(event.id),
+          }))
+          .sort((a, b) => new Date(b.event.eventDate).getTime() - new Date(a.event.eventDate).getTime());
 
         setPastEventStatuses(joinedStatuses);
       } catch (error: any) {
@@ -203,9 +214,22 @@ export default function StudentDashboardPage() {
     
     setLoadingEventId(selectedEvent.id);
     try {
-      const response = await eventAPI.registerForEvent(selectedEvent.id, registrationData);
-      alert(`✓ Successfully registered for the event!`);
+      await eventAPI.registerForEvent(selectedEvent.id, registrationData);
+      setSuccessEventTitle(selectedEvent.title);
+      setRegistrationSuccess(true);
+      setRegisteredEventIds((prev) => new Set(prev).add(selectedEvent.id));
+      setPastEventStatuses((prev) => {
+        if (prev.some((item) => item.event.id === selectedEvent.id)) {
+          return prev.map((item) =>
+            item.event.id === selectedEvent.id ? { ...item, isRegistered: true } : item
+          );
+        }
+        return [{ event: selectedEvent, isRegistered: true }, ...prev];
+      });
       setSelectedEvent(null);
+      setTimeout(() => {
+        setRegistrationSuccess(false);
+      }, 5000);
     } catch (error: any) {
       const errorMessage = error.response?.data?.message || "Failed to register for event. Please try again.";
       throw new Error(errorMessage);
@@ -241,16 +265,24 @@ export default function StudentDashboardPage() {
     return { label: "Open", variant: "success" };
   };
 
-  const categories = ["All", "Tech", "Culture", "Community", "Sports", "Workshop", "Seminar"];
-  const pastEventFilters = ["All", "Registered", "Not registered", "Attended", "Not attended"];
+  const categories = [
+    "All",
+    "Tech",
+    "Culture",
+    "Community",
+    "Sports",
+    "Workshop",
+    "Seminar",
+    "AI / Machine Learning",
+    "Project Showcase / Exhibition",
+    "Robotics / IoT",
+  ];
+  const pastEventFilters = ["All", "Registered", "Not registered"];
 
   const filteredPastEventStatuses = pastEventStatuses.filter((item) => {
     if (selectedPastFilter === "All") return true;
     if (selectedPastFilter === "Registered") return item.isRegistered;
     if (selectedPastFilter === "Not registered") return !item.isRegistered;
-    if (selectedPastFilter === "Attended") return item.attendanceStatus === "Attended";
-    if (selectedPastFilter === "Not attended") return item.attendanceStatus === "Not attended";
-    if (selectedPastFilter === "N/A") return item.attendanceStatus === "N/A";
     return true;
   });
 
@@ -258,8 +290,17 @@ export default function StudentDashboardPage() {
     <div className="space-y-10">
       <PageHeader
         title="Welcome back"
-        description="Track your society submissions, keep tabs on approvals, and explore curated events."
+        description="Track your society submissions, keep tabs on approvals and explore curated events."
       />
+
+      {registrationSuccess && (
+        <div className="rounded-2xl border border-green-500/50 bg-green-50 px-4 py-3 text-sm text-green-700">
+          <p className="font-semibold">Registration successful</p>
+          <p className="mt-1">
+            You have successfully registered for {successEventTitle}.
+          </p>
+        </div>
+      )}
 
       <SectionCard title="Categories" description="Select a domain to refine event recommendations.">
         <div className="flex flex-wrap gap-3">
@@ -281,7 +322,7 @@ export default function StudentDashboardPage() {
 
       <SectionCard
         title="Event marketplace"
-        description="Browse opportunities, register, and follow admin updates in one place."
+        description="Browse opportunities, register and  updates in one place."
       >
         <div className="mb-6">
           <input
@@ -309,7 +350,12 @@ export default function StudentDashboardPage() {
           <div className="grid gap-4">
             {marketplaceEvents.map((event) => {
               const status = getEventStatus(event);
-              const isRegistrationOpen = status.label === "Open" || status.label === "Closing Soon";
+              const isAlreadyRegistered = registeredEventIds.has(event.id);
+              const isRegistrationOpen =
+                !isAlreadyRegistered && (status.label === "Open" || status.label === "Closing Soon");
+              const displayStatus = isAlreadyRegistered
+                ? { label: "Registered", variant: "success" as const }
+                : status;
               return (
                 <div
                   key={event.id}
@@ -323,14 +369,16 @@ export default function StudentDashboardPage() {
                     <p className="text-sm text-muted-foreground">{event.venue}</p>
                   </div>
                   <div className="flex flex-col gap-3 md:flex-row md:items-center">
-                    <Badge variant={status.variant}>{status.label}</Badge>
-                    <Button
-                      variant={isRegistrationOpen ? "default" : "secondary"}
-                      disabled={!isRegistrationOpen}
-                      onClick={() => handleRegisterEvent(event)}
-                    >
-                      {isRegistrationOpen ? "Register" : "View Details"}
-                    </Button>
+                    <Badge variant={displayStatus.variant}>{displayStatus.label}</Badge>
+                    {isAlreadyRegistered ? (
+                      <Button variant="secondary" disabled>
+                        Registered
+                      </Button>
+                    ) : isRegistrationOpen ? (
+                      <Button variant="default" onClick={() => handleRegisterEvent(event)}>
+                        Register
+                      </Button>
+                    ) : null}
                   </div>
                 </div>
               );
@@ -341,7 +389,7 @@ export default function StudentDashboardPage() {
 
       <SectionCard
         title="Past events history"
-        description="See completed events and your registration and attendance status."
+        description="See completed events and any events you've registered for."
       >
         <div className="mb-6 flex flex-wrap gap-3">
           {pastEventFilters.map((filter) => (
@@ -368,20 +416,13 @@ export default function StudentDashboardPage() {
         {pastEventsLoading ? (
           <div className="py-12 text-center text-muted-foreground">Loading past events...</div>
         ) : filteredPastEventStatuses.length === 0 ? (
-          <div className="py-12 text-center text-muted-foreground">No completed events found yet.</div>
+          <div className="py-12 text-center text-muted-foreground">No events found yet.</div>
         ) : (
           <div className="grid gap-4">
-            {filteredPastEventStatuses.map(({ event, isRegistered, attendanceStatus }) => {
+            {filteredPastEventStatuses.map(({ event, isRegistered }) => {
               const registrationBadge = isRegistered
                 ? { label: "Registered", variant: "success" as const }
                 : { label: "Not registered", variant: "outline" as const };
-
-              const attendanceBadge =
-                attendanceStatus === "Attended"
-                  ? { label: "Attended", variant: "success" as const }
-                  : attendanceStatus === "Not attended"
-                  ? { label: "Not attended", variant: "warning" as const }
-                  : null;
 
               return (
                 <div
@@ -397,9 +438,6 @@ export default function StudentDashboardPage() {
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant={registrationBadge.variant}>{registrationBadge.label}</Badge>
-                    {attendanceBadge && (
-                      <Badge variant={attendanceBadge.variant}>{attendanceBadge.label}</Badge>
-                    )}
                   </div>
                 </div>
               );
