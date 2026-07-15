@@ -72,6 +72,7 @@ router.post('/:eventId/registrations/:registrationId/system-event', protect, eve
 
 // Event statistics (organizer/admin only)
 router.get('/:id/stats', protect, eventController.getEventStats);
+router.get('/:eventId/registrations', protect, eventController.getEventRegistrations);
 
 // Certificate management routes
 router.get('/:eventId/pending-certificates', protect, eventController.getPendingCertificates);

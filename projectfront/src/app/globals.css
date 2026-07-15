@@ -120,3 +120,26 @@
     @apply bg-background text-foreground;
   }
 }
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  .voucher-summary-print {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .voucher-summary-print table {
+    width: 100%;
+    min-width: 0 !important;
+    border-collapse: collapse;
+  }
+
+  .voucher-summary-print th,
+  .voucher-summary-print td {
+    border: 1px solid #cbd5e1;
+    padding: 8px;
+  }
+}

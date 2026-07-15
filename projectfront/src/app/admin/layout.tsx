@@ -25,7 +25,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             <div>
               <h1 className="text-2xl font-semibold text-foreground">Admin Command Center</h1>
               <p className="text-sm text-muted-foreground">
-                Govern applications, budgets, accounts, and analytics with full auditability.
+                Govern applications, budgets, accounts and analytics with full auditability.
               </p>
             </div>
             <ModuleNav items={links} />

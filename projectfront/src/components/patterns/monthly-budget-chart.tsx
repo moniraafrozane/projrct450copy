@@ -83,13 +83,13 @@ export function MonthlyBudgetChart({ events, loading = false, emptyMessage }: Mo
     <div className="space-y-4">
       <h3 className="text-base font-semibold text-foreground">Event Budget Distribution</h3>
 
-      <div className="h-[420px] w-full rounded-lg border border-[#cfcfcf] bg-[#ececec] p-3">
+      <div className="h-[460px] w-full rounded-lg border border-[#cfcfcf] bg-[#ececec] p-3">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart
             data={chartData}
             layout="horizontal"
             barCategoryGap="16%"
-            margin={{ top: 36, right: 18, bottom: 44, left: 18 }}
+            margin={{ top: 36, right: 18, bottom: 90, left: 18 }}
           >
             <CartesianGrid stroke="#d0d0d0" vertical={false} />
             <XAxis
@@ -98,11 +98,12 @@ export function MonthlyBudgetChart({ events, loading = false, emptyMessage }: Mo
               axisLine={{ stroke: "#666" }}
               tickMargin={10}
               stroke="#333"
-              tick={{ fill: "#333", fontSize: 12 }}
+              tick={{ fill: "#333", fontSize: 11 }}
               interval={0}
-              angle={0}
-              textAnchor="middle"
-              label={{ value: "Event Name", position: "insideBottom", offset: -10, fill: "#333" }}
+              angle={-35}
+              textAnchor="end"
+              height={80}
+              label={{ value: "Event Name", position: "insideBottom", offset: -4, fill: "#333" }}
             />
             <YAxis
               tickLine={{ stroke: "#666" }}

@@ -21,7 +21,12 @@ const REPORT_STATUS = {
   returned:   'returned',
 };
 
-const EDITABLE_STATUSES = new Set([REPORT_STATUS.draft, REPORT_STATUS.returned]);
+const EDITABLE_STATUSES = new Set([
+  REPORT_STATUS.draft,
+  REPORT_STATUS.returned,
+  REPORT_STATUS.submitted,
+  REPORT_STATUS.underReview,
+]);
 
 const MEDIA_TYPES = new Set(['photos', 'video', 'document']);
 
@@ -113,6 +118,15 @@ function buildReportPdfFilename(eventTitle, reportId) {
     .replace(/\s+/g, '-');
   const shortId = String(reportId || '').slice(0, 8) || 'report';
   return `${safeTitle || 'post-event-report'}-${shortId}.pdf`;
+}
+
+function buildReportExcelFilename(eventTitle, reportId) {
+  const safeTitle = String(eventTitle || 'post-event-report')
+    .replace(/[^a-z0-9\s-]/gi, '')
+    .trim()
+    .replace(/\s+/g, '-');
+  const shortId = String(reportId || '').slice(0, 8) || 'report';
+  return `${safeTitle || 'post-event-report'}-${shortId}.xlsx`;
 }
 
 function writeLabelValue(doc, label, value) {
@@ -231,6 +245,195 @@ function streamReportPdf(res, event, report) {
   }
 
   doc.end();
+}
+
+async function streamReportExcel(res, event, report) {
+  const filename = buildReportExcelFilename(event?.title, report?.id);
+  const attendance = report?.attendanceRecord || {};
+  const insights = report?.eventInsights || {};
+  const media = Array.isArray(report?.media) ? report.media : [];
+  const attendeeList = Array.isArray(attendance.attendeeList) ? attendance.attendeeList : [];
+  const planned = typeof insights.budgetPlannedTotal === 'number' ? insights.budgetPlannedTotal : null;
+  const actual = typeof insights.budgetActualTotal === 'number' ? insights.budgetActualTotal : null;
+  const variance = planned !== null && actual !== null ? actual - planned : null;
+
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'CSE Society System';
+  workbook.created = new Date();
+  workbook.modified = new Date();
+
+  const headerFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1D3557' } };
+  const headerFont = { color: { argb: 'FFFFFFFF' }, bold: true };
+  const border = {
+    top: { style: 'thin', color: { argb: 'FFD8E2EF' } },
+    bottom: { style: 'thin', color: { argb: 'FFD8E2EF' } },
+    left: { style: 'thin', color: { argb: 'FFD8E2EF' } },
+    right: { style: 'thin', color: { argb: 'FFD8E2EF' } },
+  };
+
+  function titleRow(ws, title, mergeTo) {
+    ws.mergeCells(`A1:${mergeTo}1`);
+    const cell = ws.getCell('A1');
+    cell.value = title;
+    cell.font = { bold: true, size: 14, color: { argb: 'FF1D3557' } };
+    cell.alignment = { horizontal: 'center', vertical: 'middle' };
+    ws.getRow(1).height = 28;
+  }
+
+  function styleTableHeader(row) {
+    row.eachCell({ includeEmpty: true }, (cell) => {
+      cell.fill = headerFill;
+      cell.font = headerFont;
+      cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+      cell.border = border;
+    });
+  }
+
+  function addLabelValue(ws, label, value) {
+    const row = ws.addRow([label, value || 'N/A']);
+    row.getCell(1).font = { bold: true };
+    row.eachCell({ includeEmpty: true }, (cell) => {
+      cell.border = border;
+      cell.alignment = { vertical: 'top', wrapText: true };
+    });
+    return row;
+  }
+
+  const totalRegistered = attendance.totalRegistered ?? null;
+  const totalAttended = attendance.totalAttended ?? null;
+  const attendanceRate =
+    typeof totalRegistered === 'number' && totalRegistered > 0 && typeof totalAttended === 'number'
+      ? `${Math.round((totalAttended / totalRegistered) * 100)}%`
+      : '';
+
+  const summary = workbook.addWorksheet('Report Summary');
+  summary.columns = [{ width: 28 }, { width: 72 }];
+  titleRow(summary, `POST-EVENT REPORT - ${(event?.title || 'Event').toUpperCase()}`, 'B');
+  summary.addRow([]);
+  addLabelValue(summary, 'Event Title', event?.title);
+  addLabelValue(summary, 'Event Date', event?.eventDate ? new Date(event.eventDate).toLocaleDateString('en-GB') : '');
+  addLabelValue(summary, 'Venue', event?.venue);
+  addLabelValue(summary, 'Organizer', event?.organizerName);
+  addLabelValue(summary, 'Report Status', report?.status);
+  addLabelValue(summary, 'Created By', report?.createdByName);
+  addLabelValue(summary, 'Submitted At', report?.submittedAt ? new Date(report.submittedAt).toLocaleString('en-GB') : '');
+
+  summary.addRow([]);
+  const attendanceHeading = summary.addRow(['Attendance Record', '']);
+  attendanceHeading.getCell(1).font = { bold: true, size: 12, color: { argb: 'FF1D3557' } };
+  addLabelValue(summary, 'Total Registered', totalRegistered !== null ? String(totalRegistered) : '');
+  addLabelValue(summary, 'Total Attended', totalAttended !== null ? String(totalAttended) : '');
+  addLabelValue(summary, 'Attendance Rate', attendanceRate);
+
+  summary.addRow([]);
+  const insightsHeading = summary.addRow(['Event Report / Insights', '']);
+  insightsHeading.getCell(1).font = { bold: true, size: 12, color: { argb: 'FF1D3557' } };
+  addLabelValue(summary, 'Key Highlights', insights.keyHighlights);
+  addLabelValue(summary, 'Challenges Faced', insights.challengesFaced);
+  addLabelValue(summary, 'Improvements Suggested', insights.improvementsSuggested);
+  addLabelValue(summary, 'Overall Assessment', insights.overallAssessment);
+
+  summary.addRow([]);
+  const financeHeading = summary.addRow(['Expense & Budget', '']);
+  financeHeading.getCell(1).font = { bold: true, size: 12, color: { argb: 'FF1D3557' } };
+  addLabelValue(summary, 'Expense Submission Notes', report?.expenseNotes);
+  addLabelValue(summary, 'Planned Budget (BDT)', planned !== null ? planned.toLocaleString() : '');
+  addLabelValue(summary, 'Actual Budget (BDT)', actual !== null ? actual.toLocaleString() : '');
+  addLabelValue(summary, 'Budget Variance (BDT)', variance !== null ? variance.toLocaleString() : '');
+  addLabelValue(
+    summary,
+    'Budget Summary',
+    variance === null ? '' : variance > 0 ? 'Over budget' : variance < 0 ? 'Under budget' : 'On budget'
+  );
+
+  summary.addRow([]);
+  const reviewHeading = summary.addRow(['Review', '']);
+  reviewHeading.getCell(1).font = { bold: true, size: 12, color: { argb: 'FF1D3557' } };
+  addLabelValue(summary, 'Reviewed By', report?.reviewedByName);
+  addLabelValue(summary, 'Reviewed At', report?.reviewedAt ? new Date(report.reviewedAt).toLocaleString('en-GB') : '');
+  addLabelValue(summary, 'Admin Notes', report?.adminNotes);
+
+  const attendanceSheet = workbook.addWorksheet('Attendance');
+  attendanceSheet.columns = [
+    { width: 8 }, { width: 28 }, { width: 18 }, { width: 30 },
+    { width: 20 }, { width: 16 }, { width: 16 }, { width: 30 },
+  ];
+  titleRow(attendanceSheet, 'ATTENDANCE RECORD', 'H');
+  attendanceSheet.addRow([]);
+  addLabelValue(attendanceSheet, 'Total Registered', String(attendance.totalRegistered ?? ''));
+  addLabelValue(attendanceSheet, 'Total Attended', String(attendance.totalAttended ?? ''));
+  attendanceSheet.addRow([]);
+  const attendanceHeader = attendanceSheet.addRow(['#', 'Name', 'Student ID', 'Email', 'Department', 'Phone', 'Attended', 'Remarks']);
+  styleTableHeader(attendanceHeader);
+  if (attendeeList.length) {
+    attendeeList.forEach((entry, index) => {
+      attendanceSheet.addRow([
+        index + 1,
+        entry?.name || '',
+        entry?.id || '',
+        entry?.email || '',
+        entry?.department || '',
+        entry?.phone || '',
+        entry?.attended ? 'Yes' : 'No',
+        entry?.remarks || '',
+      ]);
+    });
+  } else {
+    attendanceSheet.addRow(['', 'No attendee list saved', '', '', '', '', '', '']);
+  }
+  attendanceSheet.eachRow((row) => row.eachCell({ includeEmpty: true }, (cell) => {
+    cell.border = cell.border || border;
+    cell.alignment = { vertical: 'top', wrapText: true };
+  }));
+
+  const insightsSheet = workbook.addWorksheet('Insights');
+  insightsSheet.columns = [{ width: 30 }, { width: 80 }];
+  titleRow(insightsSheet, 'EVENT REPORT / INSIGHTS', 'B');
+  insightsSheet.addRow([]);
+  addLabelValue(insightsSheet, 'Key Highlights', insights.keyHighlights);
+  addLabelValue(insightsSheet, 'Challenges Faced', insights.challengesFaced);
+  addLabelValue(insightsSheet, 'Improvements Suggested', insights.improvementsSuggested);
+  addLabelValue(insightsSheet, 'Overall Assessment', insights.overallAssessment);
+
+  const financeSheet = workbook.addWorksheet('Budget Comparison');
+  financeSheet.columns = [{ width: 30 }, { width: 22 }];
+  titleRow(financeSheet, 'PLANNED VS ACTUAL BUDGET', 'B');
+  financeSheet.addRow([]);
+  addLabelValue(financeSheet, 'Planned Total (BDT)', planned !== null ? planned.toLocaleString() : '');
+  addLabelValue(financeSheet, 'Actual Total (BDT)', actual !== null ? actual.toLocaleString() : '');
+  addLabelValue(financeSheet, 'Variance (BDT)', variance !== null ? variance.toLocaleString() : '');
+  addLabelValue(financeSheet, 'Expense Notes', report?.expenseNotes);
+
+  const mediaSheet = workbook.addWorksheet('Media Archive');
+  mediaSheet.columns = [{ width: 8 }, { width: 34 }, { width: 16 }, { width: 60 }, { width: 18 }, { width: 24 }];
+  titleRow(mediaSheet, 'MEDIA ARCHIVE', 'F');
+  mediaSheet.addRow([]);
+  const mediaHeader = mediaSheet.addRow(['#', 'File Name', 'Media Type', 'URL', 'File Size', 'Uploaded By']);
+  styleTableHeader(mediaHeader);
+  if (media.length) {
+    media.forEach((item, index) => {
+      mediaSheet.addRow([
+        index + 1,
+        item.fileName || '',
+        item.mediaType || '',
+        item.fileUrl || '',
+        item.fileSize || '',
+        item.uploadedByName || '',
+      ]);
+    });
+  } else {
+    mediaSheet.addRow(['', 'No media attachments uploaded', '', '', '', '']);
+  }
+  mediaSheet.eachRow((row) => row.eachCell({ includeEmpty: true }, (cell) => {
+    cell.border = cell.border || border;
+    cell.alignment = { vertical: 'top', wrapText: true };
+  }));
+
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+  await workbook.xlsx.write(res);
+  res.end();
 }
 
 // ── 1. GET /api/events/:eventId/post-event-reports ───────────────────────────
@@ -487,6 +690,31 @@ exports.downloadReportPdf = async (req, res) => {
 };
 
 // ── 4. PUT /api/events/:eventId/post-event-reports/:reportId ─────────────────
+
+exports.downloadReportExcel = async (req, res) => {
+  try {
+    const { eventId, reportId } = req.params;
+    const event = await ensureEvent(eventId, res);
+    if (!event) return;
+
+    const report = await prisma.eventReport.findFirst({
+      where: { id: reportId, eventId },
+      include: {
+        media: { orderBy: { createdAt: 'asc' } },
+      },
+    });
+    if (!report) {
+      return res.status(404).json({ success: false, message: 'Post-event report not found' });
+    }
+
+    await streamReportExcel(res, event, report);
+  } catch (err) {
+    console.error('downloadReportExcel error:', err);
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Failed to generate report Excel' });
+    }
+  }
+};
 
 exports.updateReport = async (req, res) => {
   try {

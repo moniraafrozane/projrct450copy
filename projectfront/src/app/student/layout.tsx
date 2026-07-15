@@ -5,7 +5,6 @@ import ProtectedRoute from "@/components/auth/ProtectedRoute";
 
 const links = [
   { href: "/student", label: "Dashboard" },
-  { href: "/student/applications", label: "Certificates" },
   { href: "/student/profile", label: "Profile" },
   { href: "/student/bank-receipt", label: "Bank Upload" },
 ];
@@ -23,7 +22,7 @@ export default function StudentLayout({ children }: { children: ReactNode }) {
             <div>
               <h1 className="text-2xl font-semibold text-foreground">Student Workspace</h1>
               <p className="text-sm text-muted-foreground">
-                Interact with events, follow submissions, download certificates, and stay current with admin updates.
+                Interact with events, follow submissions and stay current with admin updates.
               </p>
             </div>
             <ModuleNav items={links} />

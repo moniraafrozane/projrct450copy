@@ -3,12 +3,26 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const cloudinary = require('cloudinary').v2;
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const { protect, authorize } = require('../middleware/auth');
 
-// Ensure uploads directory exists
-const uploadsDir = path.join(__dirname, '../uploads/images');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
+
+const PUBLIC_BACKEND_URL = (
+  process.env.PUBLIC_BACKEND_URL ||
+  process.env.RENDER_EXTERNAL_URL ||
+  process.env.BACKEND_URL ||
+  ''
+).replace(/\/$/, '');
+
+function buildPublicFileUrl(req, filePath) {
+  const baseUrl = PUBLIC_BACKEND_URL || `${req.protocol}://${req.get('host')}`;
+  return `${baseUrl.replace(/\/$/, '')}${filePath}`;
 }
 
 const receiptUploadsDir = path.join(__dirname, '../uploads/receipts');
@@ -16,17 +30,14 @@ if (!fs.existsSync(receiptUploadsDir)) {
   fs.mkdirSync(receiptUploadsDir, { recursive: true });
 }
 
-// Configure multer for file storage
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, uploadsDir);
-  },
-  filename: function (req, file, cb) {
-    // Generate unique filename: timestamp-randomstring-originalname
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const ext = path.extname(file.originalname);
-    const nameWithoutExt = path.basename(file.originalname, ext);
-    cb(null, nameWithoutExt + '-' + uniqueSuffix + ext);
+// Event images are stored on Cloudinary (Render's local disk is ephemeral and
+// wiped on every restart/redeploy, which was silently breaking image URLs)
+const storage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: 'cse-society/event-images',
+    allowed_formats: ['jpeg', 'jpg', 'png', 'gif', 'webp'],
+    resource_type: 'image'
   }
 });
 
@@ -94,13 +105,11 @@ router.post('/image', upload.single('image'), (req, res) => {
       });
     }
 
-    // Generate URL for the uploaded image
-    const imageUrl = `${req.protocol}://${req.get('host')}/uploads/images/${req.file.filename}`;
-
+    // req.file.path is the secure Cloudinary URL (set by CloudinaryStorage)
     res.json({
       success: true,
       message: 'Image uploaded successfully',
-      imageUrl: imageUrl,
+      imageUrl: req.file.path,
       filename: req.file.filename
     });
   } catch (error) {
@@ -122,7 +131,7 @@ router.post('/receipt', protect, authorize('student', 'society', 'admin'), recei
       });
     }
 
-    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/receipts/${req.file.filename}`;
+    const fileUrl = buildPublicFileUrl(req, `/uploads/receipts/${req.file.filename}`);
 
     return res.json({
       success: true,

@@ -5,7 +5,7 @@ export const demoUpcomingEvents: Event[] = [
     id: "demo-1",
     title: "AI & Machine Learning Workshop",
     description:
-      "Join us for an intensive hands-on workshop covering the fundamentals of AI and ML. Learn about neural networks, deep learning, and practical applications in real-world scenarios.",
+      "Join us for an intensive hands-on workshop covering the fundamentals of AI and ML. Learn about neural networks, deep learning and practical applications in real-world scenarios.",
     eventType: "Workshop",
     category: "Technical",
     venue: "CSE lab 629",
@@ -34,7 +34,7 @@ export const demoUpcomingEvents: Event[] = [
     id: "demo-2",
     title: "Hackathon 2026: Code for Change",
     description:
-      "24-hour coding marathon to solve real-world problems. Form teams, build innovative solutions, and compete for exciting prizes. Industry mentors will guide you throughout.",
+      "24-hour coding marathon to solve real-world problems. Form teams, build innovative solutions and compete for exciting prizes. Industry mentors will guide you throughout.",
     eventType: "Competition",
     category: "Technical",
     venue: "CSE lab 303",
@@ -63,7 +63,7 @@ export const demoUpcomingEvents: Event[] = [
     id: "demo-3",
     title: "Web Development Bootcamp",
     description:
-      "Master modern web development with React, Next.js, and Node.js. Build full-stack applications from scratch with hands-on projects and expert guidance.",
+      "Master modern web development with React, Next.js and Node.js. Build full-stack applications from scratch with hands-on projects and expert guidance.",
     eventType: "Workshop",
     category: "Technical",
     venue: "CSE lab 304",

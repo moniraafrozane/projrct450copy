@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { SectionCard } from "@/components/patterns/section-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,10 +29,16 @@ function formatDate(value: string) {
   });
 }
 
+const RECEIPTS_PAGE_SIZE = 20;
+
 export default function AdminStudentAffairsPage() {
   const [receipts, setReceipts] = useState<StudentFeeReceipt[]>([]);
   const [statusFilter, setStatusFilter] = useState<"all" | StudentFeeReceiptStatus>("all");
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ page: 1, limit: RECEIPTS_PAGE_SIZE, total: 0, totalPages: 1 });
+  const [awaitingAdminAction, setAwaitingAdminAction] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionMessage, setActionMessage] = useState("");
@@ -40,12 +46,29 @@ export default function AdminStudentAffairsPage() {
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [noteById, setNoteById] = useState<Record<string, string>>({});
 
+  // Debounce free-text search so we're not firing a request on every keystroke.
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [statusFilter, debouncedSearch]);
+
   const loadReceipts = async () => {
     try {
       setLoading(true);
       setError("");
-      const res = await studentAffairsAPI.getReceipts();
+      const res = await studentAffairsAPI.getReceipts({
+        status: statusFilter === "all" ? undefined : statusFilter,
+        search: debouncedSearch || undefined,
+        page,
+        limit: RECEIPTS_PAGE_SIZE,
+      });
       setReceipts(res.receipts ?? []);
+      setAwaitingAdminAction(res.awaitingAdminAction ?? 0);
+      if (res.pagination) setPagination(res.pagination);
     } catch {
       setError("Failed to load student receipts.");
     } finally {
@@ -55,35 +78,11 @@ export default function AdminStudentAffairsPage() {
 
   useEffect(() => {
     loadReceipts();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, debouncedSearch, page]);
 
-  const pendingCount = useMemo(
-    () => receipts.filter((receipt) => receipt.status === "pending").length,
-    [receipts]
-  );
-
-  const filteredReceipts = useMemo(() => {
-    const normalized = searchTerm.trim().toLowerCase();
-
-    return receipts.filter((receipt) => {
-      const statusMatch = statusFilter === "all" || receipt.status === statusFilter;
-      if (!statusMatch) return false;
-
-      if (!normalized) return true;
-
-      const text = [
-        receipt.student?.name,
-        receipt.student?.email,
-        receipt.student?.studentId,
-        receipt.payment.reference,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-
-      return text.includes(normalized);
-    });
-  }, [receipts, statusFilter, searchTerm]);
+  const hasNoData = !loading && !error && pagination.total === 0;
+  const isFiltered = statusFilter !== "all" || Boolean(debouncedSearch);
 
   const handleDownload = async (fileUrl: string, fileName: string) => {
     try {
@@ -132,6 +131,7 @@ export default function AdminStudentAffairsPage() {
       if (decision === "accepted") {
         setNoteById((prev) => ({ ...prev, [id]: "" }));
       }
+      loadReceipts();
     } catch {
       setActionError("Failed to update receipt status. Please try again.");
     } finally {
@@ -141,6 +141,12 @@ export default function AdminStudentAffairsPage() {
 
   return (
     <div className="space-y-8">
+      <div className="flex items-center justify-end">
+        <Button asChild>
+          <a href="/admin/student-affairs/fee-report">Open Fee Report</a>
+        </Button>
+      </div>
+
       {actionMessage && (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
           {actionMessage}
@@ -155,17 +161,30 @@ export default function AdminStudentAffairsPage() {
 
       <SectionCard
         title="Student Affairs"
-        description={`Review forwarded student bank receipts. Pending reviews: ${pendingCount}`}
+        description={`Final approval of student receipts. Awaiting admin action: ${awaitingAdminAction}`}
       >
         <div className="mb-4 grid gap-3 md:grid-cols-3">
-          <label className="md:col-span-3 flex flex-col gap-2 text-sm text-muted-foreground">
+          <label className="md:col-span-2 flex flex-col gap-2 text-sm text-muted-foreground">
             Search
             <input
               className="rounded-2xl border border-border/70 bg-background px-4 py-3 text-sm text-foreground"
-              placeholder="Search by student name, email, ID, or reference"
+              placeholder="Search by name or email"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
+          </label>
+          <label className="flex flex-col gap-2 text-sm text-muted-foreground">
+            Status
+            <select
+              className="rounded-2xl border border-border/70 bg-background px-4 py-3 text-sm text-foreground"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as "all" | StudentFeeReceiptStatus)}
+            >
+              <option value="all">All</option>
+              <option value="pending">Pending</option>
+              <option value="accepted">Accepted</option>
+              <option value="rejected">Rejected</option>
+            </select>
           </label>
         </div>
 
@@ -173,13 +192,13 @@ export default function AdminStudentAffairsPage() {
           <p className="text-sm text-muted-foreground">Loading receipt queue...</p>
         ) : error ? (
           <p className="text-sm text-destructive">{error}</p>
-        ) : receipts.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No receipts submitted yet.</p>
-        ) : filteredReceipts.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No receipts match the selected filter/search.</p>
+        ) : hasNoData ? (
+          <p className="text-sm text-muted-foreground">
+            {isFiltered ? "No receipts match the selected filter/search." : "No receipts submitted yet."}
+          </p>
         ) : (
           <div className="space-y-4">
-            {filteredReceipts.map((receipt) => {
+            {receipts.map((receipt) => {
               const statusMeta = STATUS_META[receipt.status] ?? STATUS_META.pending;
               const canReview = receipt.status === "pending";
 
@@ -211,10 +230,43 @@ export default function AdminStudentAffairsPage() {
                     </div>
                   )}
 
-                  {receipt.adminNote && (
+                  {receipt.forwardedToAdmin && receipt.adminNote && (
                     <div className="mt-4 rounded-xl border border-amber-300/60 bg-amber-50/70 px-4 py-3 text-sm text-amber-900">
-                      <p className="font-semibold">Admin note</p>
+                      <p className="font-semibold">Society member's forwarding note</p>
                       <p className="mt-1 whitespace-pre-wrap">{receipt.adminNote}</p>
+                    </div>
+                  )}
+
+                  {!receipt.forwardedToAdmin && receipt.adminNote && (
+                    <div className="mt-4 rounded-xl border border-red-300/60 bg-red-50/70 px-4 py-3 text-sm text-red-900">
+                      <p className="font-semibold">Admin rejection reason</p>
+                      <p className="mt-1 whitespace-pre-wrap">{receipt.adminNote}</p>
+                    </div>
+                  )}
+
+                  {receipt.forwardedToAdmin && (
+                    <div className="mt-4 rounded-xl border border-sky-300/60 bg-sky-50/70 px-4 py-3 text-sm text-sky-900">
+                      <p className="font-semibold">Forwarded to admin</p>
+                      <p className="mt-1">
+                        By {receipt.forwardedBy?.name ?? 'Society member'} on{' '}
+                        {receipt.forwardedAt ? formatDate(receipt.forwardedAt) : 'Unknown'}
+                      </p>
+                    </div>
+                  )}
+
+                  {canReview && (
+                    <div className="mt-4 rounded-xl border border-orange-300/60 bg-orange-50/70 px-4 py-3 text-sm text-orange-900">
+                      <p className="font-semibold">⚠️ Awaiting your action</p>
+                      <p className="mt-1">This receipt is ready for final approval. Accept to mark as complete.</p>
+                    </div>
+                  )}
+
+                  {receipt.status === "accepted" && (
+                    <div className="mt-4 rounded-xl border border-green-300/60 bg-green-50/70 px-4 py-3 text-sm text-green-900">
+                      <p className="font-semibold">✓ Accepted by admin</p>
+                      <p className="mt-1">
+                        Approved on {receipt.reviewedAt ? formatDate(receipt.reviewedAt) : 'unknown'}
+                      </p>
                     </div>
                   )}
 
@@ -264,6 +316,30 @@ export default function AdminStudentAffairsPage() {
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {!loading && !error && pagination.total > 0 && (
+          <div className="mt-4 flex items-center justify-between pt-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setPage((p) => p - 1)}
+              disabled={pagination.page <= 1}
+            >
+              Previous
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              Page {pagination.page} of {pagination.totalPages} · {pagination.total} receipts total
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setPage((p) => p + 1)}
+              disabled={pagination.page >= pagination.totalPages}
+            >
+              Next
+            </Button>
           </div>
         )}
       </SectionCard>

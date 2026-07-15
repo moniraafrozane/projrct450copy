@@ -10,6 +10,148 @@ const VOUCHER_STATUS = {
   rejected: 'rejected',
 };
 
+exports.downloadVoucherSummaryExcel = async (req, res) => {
+  try {
+    const admin = isAdminUser(req.user);
+    const society = isSocietyUser(req.user);
+
+    if (!admin && !society) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to download voucher summaries',
+      });
+    }
+
+    const eventId = normalizeString(req.query.eventId);
+    const budgetApplicationId = normalizeString(req.query.budgetApplicationId);
+
+    const where = {
+      ...(eventId ? { eventId } : {}),
+      ...(budgetApplicationId ? { budgetApplicationId } : {}),
+    };
+
+    const vouchers = await prisma.voucher.findMany({
+      where,
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        amount: true,
+        status: true,
+        createdAt: true,
+        event: {
+          select: {
+            id: true,
+            title: true,
+            eventDate: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (vouchers.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No vouchers found for the specified criteria',
+      });
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Voucher Summary');
+
+    const eventTitle = vouchers[0].event?.title || 'Voucher Summary';
+    worksheet.mergeCells('A1:E1');
+    worksheet.getCell('A1').value = eventTitle;
+    worksheet.getCell('A1').font = { bold: true, size: 14 };
+    worksheet.getCell('A1').alignment = { horizontal: 'center' };
+
+    worksheet.mergeCells('A2:E2');
+    worksheet.getCell('A2').value = 'Voucher summary report';
+    worksheet.getCell('A2').alignment = { horizontal: 'center' };
+
+    worksheet.columns = [
+      { header: 'DATE', key: 'date', width: 14 },
+      { header: 'PURPOSES', key: 'purposes', width: 30 },
+      { header: 'VOUCHER', key: 'voucherNumber', width: 12 },
+      { header: 'TAKA', key: 'amount', width: 14 },
+      { header: 'COMMENTS', key: 'comments', width: 18 },
+    ];
+
+    const headerRow = worksheet.addRow(['DATE', 'PURPOSES', 'VOUCHER', 'TAKA', 'COMMENTS']);
+    headerRow.font = { bold: true };
+    headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
+    headerRow.eachCell((cell) => {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE9EEF7' } };
+      cell.border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' },
+      };
+    });
+
+    let voucherCount = 1;
+    let approvedAmount = 0;
+
+    for (const voucher of vouchers) {
+      const row = worksheet.addRow({
+        date: new Date(voucher.createdAt).toLocaleDateString('en-GB'),
+        purposes: voucher.title,
+        voucherNumber: voucherCount,
+        amount: voucher.amount,
+        comments: voucher.status.replace('_', ' '),
+      });
+
+      row.eachCell((cell, colNumber) => {
+        cell.border = {
+          top: { style: 'thin' },
+          left: { style: 'thin' },
+          bottom: { style: 'thin' },
+          right: { style: 'thin' },
+        };
+        if (colNumber === 3 || colNumber === 4) {
+          cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        }
+      });
+
+      if (voucher.status === 'approved') {
+        approvedAmount += voucher.amount;
+      }
+
+      voucherCount += 1;
+    }
+
+    const totalRow = worksheet.addRow(['Total', '', '', approvedAmount, '']);
+    totalRow.font = { bold: true };
+    totalRow.eachCell((cell) => {
+      cell.border = {
+        top: { style: 'medium' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' },
+      };
+    });
+
+    worksheet.getCell(`D${totalRow.number}`).numFmt = '#,##0';
+    worksheet.getCell(`D${totalRow.number}`).alignment = { horizontal: 'center' };
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const safeName = eventTitle.replace(/[^a-z0-9\s-]/gi, '').trim().replace(/\s+/g, '-') || 'voucher-summary';
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="voucher-summary-${safeName}.xlsx"`);
+    return res.send(buffer);
+  } catch (error) {
+    console.error('Download voucher summary error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error generating voucher summary',
+      error: error.message,
+    });
+  }
+};
+
 const ALLOWED_MEMBER_MUTATION_STATUSES = new Set([VOUCHER_STATUS.draft, VOUCHER_STATUS.submitted]);
 const REVIEWABLE_STATUSES = new Set([VOUCHER_STATUS.submitted, VOUCHER_STATUS.underReview]);
 

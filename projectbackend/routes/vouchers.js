@@ -7,6 +7,7 @@ const voucherController = require('../controllers/voucherController');
 router.post('/', protect, voucherController.createVoucher);
 router.get('/', protect, voucherController.getVouchers);
 router.get('/summary', protect, voucherController.getVoucherSummary);
+router.get('/summary/excel', protect, voucherController.downloadVoucherSummaryExcel);
 router.get('/:id', protect, voucherController.getVoucherById);
 router.put('/:id', protect, voucherController.updateVoucher);
 router.delete('/:id', protect, voucherController.deleteVoucher);

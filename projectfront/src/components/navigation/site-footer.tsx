@@ -24,7 +24,7 @@ export function SiteFooter() {
             <p className="text-sm font-semibold uppercase tracking-[0.3em] text-white/70">CSE Society</p>
             <p className="text-2xl font-semibold leading-tight">Budget & Event Command Center</p>
             <p className="text-sm text-white/80">
-              Streamline approvals, maintain transparent ledgers, and keep every event on schedule from one shared workspace.
+              Streamline approvals, maintain transparent ledgers and keep every event on schedule from one shared workspace.
             </p>
           </div>
 

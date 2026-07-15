@@ -1086,6 +1086,59 @@ exports.getMyRegistrations = async (req, res) => {
   }
 };
 
+// Get the list of students registered for an event (organizer/admin only)
+exports.getEventRegistrations = async (req, res) => {
+  try {
+    const { eventId } = req.params;
+
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: { id: true, title: true, organizerId: true }
+    });
+
+    if (!event) {
+      return res.status(404).json({ success: false, message: 'Event not found' });
+    }
+
+    const canManageAllEvents = isAdminUser(req.user) || isSocietyUser(req.user);
+    if (event.organizerId !== req.user.id && !canManageAllEvents) {
+      return res.status(403).json({ success: false, message: 'Not authorized to view registrations for this event' });
+    }
+
+    const registrations = await prisma.eventRegistration.findMany({
+      where: { eventId },
+      select: {
+        id: true,
+        userName: true,
+        userEmail: true,
+        userPhone: true,
+        registrationNumber: true,
+        teamName: true,
+        institution: true,
+        status: true,
+        paymentStatus: true,
+        attended: true,
+        registrationDate: true
+      },
+      orderBy: { registrationDate: 'asc' }
+    });
+
+    return res.json({
+      success: true,
+      eventTitle: event.title,
+      totalRegistrations: registrations.length,
+      registrations
+    });
+  } catch (error) {
+    console.error('Get event registrations error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error fetching event registrations',
+      error: error.message
+    });
+  }
+};
+
 // Get a single registration audit log for the logged-in student
 exports.getMyRegistrationLog = async (req, res) => {
   try {

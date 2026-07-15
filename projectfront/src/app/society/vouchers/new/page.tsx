@@ -1,17 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { PageHeader } from "@/components/patterns/page-header";
 import { SectionCard } from "@/components/patterns/section-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  BudgetBreakdownContent,
   Event,
-  SocietyApplication,
-  applicationAPI,
   eventAPI,
   voucherAPI,
 } from "@/lib/api";
@@ -24,11 +21,15 @@ type ReceiptMeta = {
 
 export default function NewVoucherPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const titleInputRef = useRef<HTMLInputElement>(null);
+
+  const source = searchParams.get("from");
+  const preselectedEventId = (searchParams.get("eventId") || "").trim();
+  const backHref = source === "post-event" ? "/society/post-event" : "/society/vouchers";
 
   const [events, setEvents] = useState<Event[]>([]);
-  const [budgets, setBudgets] = useState<SocietyApplication[]>([]);
   const [loadingEvents, setLoadingEvents] = useState(true);
-  const [loadingBudgets, setLoadingBudgets] = useState(true);
   const [uploadingReceipt, setUploadingReceipt] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -36,19 +37,27 @@ export default function NewVoucherPage() {
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [eventId, setEventId] = useState("");
-  const [budgetApplicationId, setBudgetApplicationId] = useState("");
   const [receiptMeta, setReceiptMeta] = useState<ReceiptMeta | null>(null);
 
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+
+  const resetForm = (preserveEvent = true) => {
+    setTitle("");
+    setDescription("");
+    setAmount("");
+    setReceiptMeta(null);
+    if (!preserveEvent) {
+      setEventId("");
+    }
+  };
 
   useEffect(() => {
     const loadEvents = async () => {
       try {
         setLoadingEvents(true);
         const response = await eventAPI.getManageableEvents();
-        const upcomingEvents = (response.events || []).filter((event) => event.status === "upcoming");
-        setEvents(upcomingEvents);
+        setEvents(response.events || []);
       } catch (loadError: any) {
         setError(loadError.response?.data?.message || "Failed to load events");
       } finally {
@@ -60,45 +69,17 @@ export default function NewVoucherPage() {
   }, []);
 
   useEffect(() => {
-    const loadBudgets = async () => {
-      try {
-        setLoadingBudgets(true);
-        const response = await applicationAPI.getBudgetBreakdowns();
-        setBudgets(response.applications || []);
-      } catch {
-        setBudgets([]);
-      } finally {
-        setLoadingBudgets(false);
-      }
-    };
-
-    loadBudgets();
-  }, []);
+    if (!preselectedEventId || loadingEvents || eventId) return;
+    const hasMatchingEvent = events.some((event) => event.id === preselectedEventId);
+    if (hasMatchingEvent) {
+      setEventId(preselectedEventId);
+    }
+  }, [preselectedEventId, loadingEvents, eventId, events]);
 
   const selectedEvent = useMemo(
     () => events.find((event) => event.id === eventId) || null,
     [events, eventId]
   );
-
-  const eligibleBudgets = useMemo(() => {
-    if (!eventId) return [];
-
-    return budgets.filter((budget) => {
-      const content = (budget.content || {}) as Partial<BudgetBreakdownContent>;
-      return content.eventId === eventId;
-    });
-  }, [budgets, eventId]);
-
-  useEffect(() => {
-    if (!budgetApplicationId) {
-      return;
-    }
-
-    const isStillValid = eligibleBudgets.some((budget) => budget.id === budgetApplicationId);
-    if (!isStillValid) {
-      setBudgetApplicationId("");
-    }
-  }, [eligibleBudgets, budgetApplicationId]);
 
   const handleReceiptFile = async (file: File | undefined) => {
     if (!file) {
@@ -159,17 +140,14 @@ export default function NewVoucherPage() {
         description: description.trim(),
         amount: numericAmount,
         eventId,
-        budgetApplicationId: budgetApplicationId || undefined,
         receiptFileUrl: receiptMeta.fileUrl,
         receiptFileName: receiptMeta.fileName,
         receiptMimeType: receiptMeta.mimeType,
       });
 
       setMessage(response.message || "Draft saved successfully");
-
-      setTimeout(() => {
-        router.push("/society/vouchers?saved=1");
-      }, 1200);
+      resetForm(true);
+      titleInputRef.current?.focus();
     } catch (saveError: any) {
       const backendMessage = saveError.response?.data?.message;
       const backendDetail = saveError.response?.data?.error;
@@ -185,7 +163,7 @@ export default function NewVoucherPage() {
         eyebrow="Voucher workspace"
         title="Create voucher"
         description="Attach receipt and save the voucher as a draft for later review."
-        actions={[{ label: "Back to vouchers", href: "/society/vouchers", variant: "outline" }]}
+        actions={[{ label: "Back", href: backHref, variant: "outline" }]}
       />
 
       <SectionCard title="Voucher details" description="Fill in expense details and upload the proof document.">
@@ -204,6 +182,7 @@ export default function NewVoucherPage() {
           <label className="flex flex-col gap-2 text-sm">
             Voucher title *
             <Input
+              ref={titleInputRef}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Venue deposit"
@@ -263,27 +242,6 @@ export default function NewVoucherPage() {
           )}
 
           <label className="flex flex-col gap-2 text-sm">
-            Linked budget (optional)
-            <select
-              value={budgetApplicationId}
-              onChange={(e) => setBudgetApplicationId(e.target.value)}
-              disabled={!eventId || loadingBudgets || saving}
-              className="flex h-10 w-full rounded-2xl border border-border/70 bg-background px-4 py-2 text-sm"
-            >
-              <option value="">No linked budget</option>
-              {eligibleBudgets.map((budget) => {
-                const content = (budget.content || {}) as Partial<BudgetBreakdownContent>;
-                const amountLabel = Number(content.totalAmount || 0).toLocaleString();
-                return (
-                  <option key={budget.id} value={budget.id}>
-                    {budget.subject} | BDT {amountLabel}
-                  </option>
-                );
-              })}
-            </select>
-          </label>
-
-          <label className="flex flex-col gap-2 text-sm">
             Receipt file (PDF/JPG/PNG) *
             <Input
               type="file"
@@ -308,8 +266,15 @@ export default function NewVoucherPage() {
           >
             {saving ? "Saving..." : "Save draft"}
           </Button>
+          <Button
+            variant="outline"
+            onClick={() => resetForm(true)}
+            disabled={saving || uploadingReceipt || loadingEvents}
+          >
+            Clear form
+          </Button>
           <Button variant="outline" asChild>
-            <a href="/society/vouchers">Cancel</a>
+            <a href={backHref}>Cancel</a>
           </Button>
         </div>
       </SectionCard>

@@ -7,7 +7,8 @@ export async function uploadImage(file: File): Promise<string> {
   const formData = new FormData();
   formData.append('image', file);
 
-  const response = await fetch('http://localhost:5000/api/upload/image', {
+  const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+  const response = await fetch(`${apiBaseUrl.replace(/\/$/, '')}/upload/image`, {
     method: 'POST',
     body: formData,
     // Note: Don't set Content-Type header, browser will set it automatically with boundary

@@ -1,0 +1,2 @@
+-- No schema change; ensure API returns forwarded fields (no-op migration)
+-- This migration is added to keep migration history consistent with code changes.

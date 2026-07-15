@@ -65,6 +65,7 @@ router.get('/budget-comparison', protect, ctrl.getBudgetComparison);
 router.get(   '/post-event-reports',                          protect, ctrl.getReports);
 router.post(  '/post-event-reports',                          protect, ctrl.createReport);
 router.get(   '/post-event-reports/:reportId',                protect, ctrl.getReport);
+router.get(   '/post-event-reports/:reportId/excel',          protect, ctrl.downloadReportExcel);
 router.get(   '/post-event-reports/:reportId/pdf',            protect, ctrl.downloadReportPdf);
 router.put(   '/post-event-reports/:reportId',                protect, ctrl.updateReport);
 router.post(  '/post-event-reports/:reportId/submit',         protect, ctrl.submitReport);

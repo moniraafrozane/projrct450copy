@@ -71,6 +71,9 @@ export default function EventExpensePage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
 
+  // Summary report print state
+  const [printingSummary, setPrintingSummary] = useState(false);
+
   const addTitleRef = useRef<HTMLInputElement>(null);
 
   // Load vouchers for this event
@@ -284,6 +287,101 @@ export default function EventExpensePage() {
 
   const totalAmount = vouchers.reduce((sum, v) => sum + v.amount, 0);
 
+  const formatReportDate = (iso: string) => {
+    const parsed = new Date(iso);
+    if (Number.isNaN(parsed.getTime())) return "-";
+    return parsed.toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+  };
+
+  const escapeHtml = (value: string) =>
+    value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+
+  const handlePrintSummary = () => {
+    if (vouchers.length === 0) return;
+
+    setPrintingSummary(true);
+    setError("");
+
+    const printTab = window.open("", "_blank");
+    if (!printTab) {
+      setError("Popup was blocked. Please allow popups for this site and try again.");
+      setPrintingSummary(false);
+      return;
+    }
+
+    const rows = vouchers
+      .map(
+        (voucher, index) => `
+          <tr>
+            <td>${escapeHtml(formatReportDate(voucher.createdAt))}</td>
+            <td>${escapeHtml(voucher.title)}</td>
+            <td style="text-align:center">${index + 1}</td>
+            <td style="text-align:right">${voucher.amount.toLocaleString()}</td>
+            <td>${escapeHtml(voucher.description?.trim() ? voucher.description : "-")}</td>
+          </tr>`
+      )
+      .join("");
+
+    const html = `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Voucher Summary - ${escapeHtml(eventTitle || "Event")}</title>
+    <style>
+      body { font-family: Arial, sans-serif; padding: 24px; color: #111; }
+      h1 { text-align: center; font-size: 20px; margin-bottom: 4px; }
+      p.subtitle { text-align: center; font-size: 12px; color: #555; margin-top: 0; margin-bottom: 24px; }
+      table { border-collapse: collapse; width: 100%; }
+      th, td { border: 1px solid #333; padding: 8px; font-size: 13px; }
+      th { background: #f0f0f0; text-align: left; }
+      tfoot td { font-weight: bold; background: #f7f7f7; }
+    </style>
+  </head>
+  <body>
+    <h1>Voucher Summary Report</h1>
+    <p class="subtitle">${escapeHtml(eventTitle || "Event")} &middot; Generated on ${new Date().toLocaleDateString("en-GB")}</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Purposes</th>
+          <th style="text-align:center">Voucher</th>
+          <th style="text-align:right">Taka</th>
+          <th>Comments</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+      <tfoot>
+        <tr>
+          <td colspan="3" style="text-align:right">Total</td>
+          <td style="text-align:right">${totalAmount.toLocaleString()}</td>
+          <td>-</td>
+        </tr>
+      </tfoot>
+    </table>
+  </body>
+</html>`;
+
+    printTab.document.open();
+    printTab.document.write(html);
+    printTab.document.close();
+
+    setTimeout(() => {
+      printTab.focus();
+      printTab.print();
+      setPrintingSummary(false);
+    }, 200);
+  };
+
   // ── Render ──────────────────────────────────────────────────────────────────
 
   const pageTitle = eventTitle ? `${eventTitle} — Expenses` : "Event Expenses";
@@ -293,7 +391,7 @@ export default function EventExpensePage() {
       <PageHeader
         eyebrow="Vouchers"
         title={pageTitle}
-        description="View, add, edit, and forward expense records for this event."
+        description="View, add, edit and forward expense records for this event."
         actions={[
           { label: "← Back to vouchers", href: "/society/vouchers", variant: "outline" },
         ]}
@@ -464,23 +562,24 @@ export default function EventExpensePage() {
                                   variant="outline"
                                   onClick={() => startEdit(voucher)}
                                   disabled={!!editingId || deletingId === voucher.id || submittingId === voucher.id}
+                                  className="rounded-full px-4 text-sm"
                                 >
                                   Edit
                                 </Button>
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  className="text-red-600 hover:bg-red-50"
                                   onClick={() => deleteVoucher(voucher.id, voucher.title)}
                                   disabled={deletingId === voucher.id || !!editingId}
+                                  className="rounded-full text-red-600 px-4 text-sm hover:bg-red-50"
                                 >
                                   {deletingId === voucher.id ? "Deleting…" : "Delete"}
                                 </Button>
                                 <Button
                                   size="sm"
-                                  variant="secondary"
                                   onClick={() => submitToAdmin(voucher.id)}
                                   disabled={submittingId === voucher.id || !!editingId}
+                                  className="rounded-full bg-slate-200 text-slate-800 px-4 text-sm"
                                 >
                                   {submittingId === voucher.id ? "Submitting..." : "Submit to admin"}
                                 </Button>
@@ -613,6 +712,71 @@ export default function EventExpensePage() {
               </div>
             )}
           </>
+        )}
+      </SectionCard>
+
+      <SectionCard
+        title="Summary Report"
+        description="A printable summary of all expense vouchers for this event."
+        actions={
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handlePrintSummary}
+            disabled={loading || vouchers.length === 0 || printingSummary}
+          >
+            {printingSummary ? "Preparing print..." : "Print summary"}
+          </Button>
+        }
+      >
+        {loading ? (
+          <p className="text-sm text-muted-foreground">Loading summary report...</p>
+        ) : vouchers.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No expenses available to build a summary report yet.</p>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-border/60">
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="bg-muted/40 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  <th className="border border-border/60 px-3 py-2">Date</th>
+                  <th className="border border-border/60 px-3 py-2">Purposes</th>
+                  <th className="border border-border/60 px-3 py-2 text-center">Voucher</th>
+                  <th className="border border-border/60 px-3 py-2 text-right">Taka</th>
+                  <th className="border border-border/60 px-3 py-2">Comments</th>
+                </tr>
+              </thead>
+              <tbody>
+                {vouchers.map((voucher, index) => (
+                  <tr key={`summary-${voucher.id}`} className="odd:bg-background even:bg-muted/10">
+                    <td className="border border-border/60 px-3 py-2 align-top tabular-nums">
+                      {formatReportDate(voucher.createdAt)}
+                    </td>
+                    <td className="border border-border/60 px-3 py-2 align-top font-medium">
+                      {voucher.title}
+                    </td>
+                    <td className="border border-border/60 px-3 py-2 text-center align-top tabular-nums">
+                      {index + 1}
+                    </td>
+                    <td className="border border-border/60 px-3 py-2 text-right align-top tabular-nums">
+                      {voucher.amount.toLocaleString()}
+                    </td>
+                    <td className="border border-border/60 px-3 py-2 align-top text-muted-foreground">
+                      {voucher.description?.trim() ? voucher.description : "-"}
+                    </td>
+                  </tr>
+                ))}
+                <tr className="bg-muted/30 font-semibold">
+                  <td className="border border-border/60 px-3 py-2" colSpan={3}>
+                    Total
+                  </td>
+                  <td className="border border-border/60 px-3 py-2 text-right tabular-nums">
+                    {totalAmount.toLocaleString()}
+                  </td>
+                  <td className="border border-border/60 px-3 py-2">-</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         )}
       </SectionCard>
     </div>

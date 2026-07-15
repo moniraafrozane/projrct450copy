@@ -106,7 +106,7 @@ export default function StudentProfilePage() {
     <div className="space-y-10">
       <PageHeader
         title="Profile & security"
-        description="Update contact information, manage preferences, and trigger password resets."
+        description="Update contact information, manage preferences and trigger password resets."
       />
 
       <SectionCard title="Personal details" description="Changes cascade across society and admin modules.">
@@ -217,7 +217,7 @@ export default function StudentProfilePage() {
             <div>
               <p className="font-semibold text-foreground">Notifications</p>
               <p className="text-sm text-muted-foreground mt-1">
-                Manage which notifications you receive — bank receipts, new events, event updates, and reminders.
+                Manage which notifications you receive — bank receipts, new events, event updates and reminders.
               </p>
             </div>
           </div>

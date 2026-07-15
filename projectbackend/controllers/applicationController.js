@@ -704,7 +704,7 @@ exports.forwardToAdmin = async (req, res) => {
 
     const application = await prisma.societyApplication.update({
       where: { id },
-      data: { status: 'under_review' },
+      data: { status: 'under_review', forwardedAt: existing.forwardedAt ?? new Date() },
     });
 
     res.json({ success: true, message: 'Budget forwarded to admin for review', application });
@@ -883,7 +883,7 @@ exports.getApplicationById = async (req, res) => {
   }
 };
 
-// ─── Export application as PDF (admin or owner society member) ─────
+// ─── Export application as PDF (society or admin) ──────────────────
 exports.exportApplicationPdf = async (req, res) => {
   try {
     const { id } = req.params;
@@ -903,10 +903,10 @@ exports.exportApplicationPdf = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Application not found' });
     }
 
-    if (!isAdmin && application.createdById !== req.user.id) {
+    if (!isAdmin && !isSociety) {
       return res.status(403).json({
         success: false,
-        message: 'You can only export your own applications',
+        message: 'Not authorized to export application PDFs',
       });
     }
 
@@ -930,15 +930,18 @@ exports.exportApplicationPdf = async (req, res) => {
   }
 };
 
-// ─── Print application as PDF (admin only) ─────────────────────────
+// ─── Print application as PDF (society or admin) ───────────────────
 exports.printApplicationPdf = async (req, res) => {
   try {
     const { id } = req.params;
 
-    if (!isAdminUser(req.user)) {
+    const isAdmin = isAdminUser(req.user);
+    const isSociety = isSocietyUser(req.user);
+
+    if (!isAdmin && !isSociety) {
       return res.status(403).json({
         success: false,
-        message: 'Only admin can print applications',
+        message: 'Not authorized to print application PDFs',
       });
     }
 
@@ -1058,7 +1061,7 @@ exports.submitApplication = async (req, res) => {
 
     const application = await prisma.societyApplication.update({
       where: { id },
-      data: { status: 'submitted' },
+      data: { status: 'submitted', forwardedAt: existing.forwardedAt ?? new Date() },
     });
 
     res.json({

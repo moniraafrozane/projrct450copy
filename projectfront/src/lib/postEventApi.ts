@@ -191,6 +191,31 @@ export const postEventAPI = {
     URL.revokeObjectURL(url);
   },
 
+  downloadReportExcel: async (
+    eventId: string,
+    reportId: string,
+    eventTitle?: string
+  ): Promise<void> => {
+    const response = await api.get(`/events/${eventId}/post-event-reports/${reportId}/excel`, {
+      responseType: "blob",
+    });
+    const blob = new Blob([response.data], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const safeName = (eventTitle || "post-event-report")
+      .replace(/[^a-z0-9\s-]/gi, "")
+      .trim()
+      .replace(/\s+/g, "-");
+    a.download = `${safeName || "post-event-report"}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
+
   getReportPdfFile: async (
     eventId: string,
     reportId: string

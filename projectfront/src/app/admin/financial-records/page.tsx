@@ -42,6 +42,8 @@ function formatRecordDate(dateValue: string) {
   });
 }
 
+const LEDGER_PAGE_SIZE = 10;
+
 function mapVoucherToRecord(voucher: Voucher): FinancialRecordRow {
   const recordDate = voucher.updatedAt || voucher.createdAt;
   return {
@@ -80,6 +82,7 @@ export default function FinancialRecordsPage() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     const loadFinancialRecords = async () => {
@@ -158,6 +161,17 @@ export default function FinancialRecordsPage() {
     });
   }, [records, search]);
 
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
+
+  const pageCount = Math.max(1, Math.ceil(filteredRecords.length / LEDGER_PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const paginatedRecords = useMemo(
+    () => filteredRecords.slice((currentPage - 1) * LEDGER_PAGE_SIZE, currentPage * LEDGER_PAGE_SIZE),
+    [filteredRecords, currentPage]
+  );
+
   return (
     <div className="space-y-10">
       <PageHeader
@@ -202,7 +216,7 @@ export default function FinancialRecordsPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredRecords.map((record) => (
+                {paginatedRecords.map((record) => (
                   <tr key={record.id} className="border-t border-border/50">
                     <td className="px-6 py-4 font-semibold text-foreground">{record.eventName}</td>
                     <td className="px-6 py-4">{record.type}</td>
@@ -236,6 +250,30 @@ export default function FinancialRecordsPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {!loading && filteredRecords.length > 0 && (
+          <div className="mt-4 flex items-center justify-between pt-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setPage((p) => p - 1)}
+              disabled={currentPage === 1}
+            >
+              Previous
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              Page {currentPage} of {pageCount} · {filteredRecords.length} records total
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setPage((p) => p + 1)}
+              disabled={currentPage === pageCount}
+            >
+              Next
+            </Button>
           </div>
         )}
       </SectionCard>

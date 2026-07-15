@@ -29,7 +29,7 @@ export default function AdminDocumentsPage() {
     <div className="space-y-10">
       <PageHeader
         title="Document vault"
-        description="Upload, store, and manage documents with approval status indicators."
+        description="Upload, store and manage documents with approval status indicators."
         actions={[{ label: "Upload", href: "#" }]}
       />
 

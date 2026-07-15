@@ -518,6 +518,43 @@ exports.logout = async (req, res) => {
   }
 };
 
+// @desc    Get active students (same query as fee-report)
+// @route   GET /api/auth/students
+// @access  Private/Admin or Society
+exports.getStudents = async (req, res) => {
+  try {
+    const students = await prisma.user.findMany({
+      where: {
+        isActive: true,
+        roles: { has: 'student' },
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        roles: true,
+        studentId: true,
+        societyName: true,
+        societyRole: true,
+        year: true,
+        isActive: true,
+        createdAt: true,
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    res.status(200).json({ success: true, count: students.length, users: students });
+  } catch (error) {
+    console.error('Get students error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching students',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
+  }
+};
+
 // @desc    Get all users
 // @route   GET /api/auth/users
 // @access  Private

@@ -4,6 +4,7 @@ const {
   login,
   getMe,
   getUsers,
+  getStudents,
   closeUserAccount,
   assignUserRole,
   updateDetails,
@@ -21,6 +22,7 @@ router.post('/login', login);
 // Protected routes (require authentication)
 router.get('/me', protect, getMe);
 router.get('/users', protect, authorize('admin'), getUsers);
+router.get('/students', protect, authorize('admin', 'society'), getStudents);
 router.put('/users/:id/close', protect, authorize('admin'), closeUserAccount);
 router.put('/users/:id/assign-role', protect, authorize('admin'), assignUserRole);
 router.put('/update', protect, updateDetails);

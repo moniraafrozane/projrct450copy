@@ -130,6 +130,7 @@ export interface EventRegistration {
   userName: string;
   userEmail: string;
   userPhone?: string;
+  registrationNumber?: string;
   eventId: string;
   registrationDate: string;
   status: 'confirmed' | 'waitlisted' | 'cancelled';
@@ -289,6 +290,22 @@ export const eventAPI = {
   // Get user's event registrations (protected)
   getMyRegistrations: async (): Promise<{ success: boolean; registrations: EventRegistration[] }> => {
     const response = await api.get('/events/my/registrations');
+    return response.data;
+  },
+
+  // Get the list of students registered for an event (organizer/admin only)
+  getEventRegistrations: async (
+    eventId: string
+  ): Promise<{
+    success: boolean;
+    eventTitle: string;
+    totalRegistrations: number;
+    registrations: Pick<
+      EventRegistration,
+      'id' | 'userName' | 'userEmail' | 'userPhone' | 'registrationNumber' | 'status' | 'paymentStatus' | 'attended' | 'registrationDate'
+    >[];
+  }> => {
+    const response = await api.get(`/events/${eventId}/registrations`);
     return response.data;
   },
 
@@ -597,6 +614,11 @@ export const userAPI = {
     return response.data;
   },
 
+  getStudents: async (): Promise<UserListResponse> => {
+    const response = await api.get('/auth/students');
+    return response.data;
+  },
+
   closeUser: async (
     id: string,
     reason: string
@@ -754,6 +776,7 @@ export interface SocietyApplication {
   memberNotes: MemberNote[];
   createdById: string;
   createdByName: string;
+  forwardedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1009,6 +1032,8 @@ export interface StudentFeePayment {
   reference: string;
   paymentDate: string;
   amount: number;
+  semester?: string | null;
+  session?: string | null;
   notes?: string | null;
   status: StudentFeePaymentStatus;
   verifiedAt?: string | null;
@@ -1025,8 +1050,12 @@ export interface StudentFeeReceipt {
   adminNote?: string | null;
   reviewedById?: string | null;
   reviewedAt?: string | null;
+  forwardedToAdmin?: boolean;
+  forwardedAt?: string | null;
+  forwardedBy?: { id: string; name: string; email?: string } | null;
   createdAt: string;
   updatedAt: string;
+  isManualEntry?: boolean;
   payment: StudentFeePayment;
   student?: {
     id: string;
@@ -1039,6 +1068,94 @@ export interface StudentFeeReceipt {
     name: string;
     email?: string;
   } | null;
+}
+
+export interface StudentFeeReportRow {
+  id: string;
+  reference: string;
+  paymentDate: string;
+  amount: number;
+  semester?: string | null;
+  session?: string | null;
+  status: StudentFeePaymentStatus;
+  student: {
+    id: string;
+    name: string;
+    email: string;
+    studentId?: string | null;
+  };
+  receipt?: {
+    id: string;
+    fileUrl: string;
+    fileName: string;
+    status: StudentFeeReceiptStatus;
+    reviewedAt?: string | null;
+  } | null;
+}
+
+export type StudentFeeSemesterCode = '1st' | '2nd' | '3rd' | '4th' | '5th' | '6th' | '7th' | '8th';
+
+export interface StudentFeeSemesterCell {
+  code: StudentFeeSemesterCode;
+  label: '1/1' | '1/2' | '2/1' | '2/2' | '3/1' | '3/2' | '4/1' | '4/2';
+  title: string;
+  status: 'paid' | 'unpaid';
+  source: 'payment' | 'pending' | 'unpaid';
+  amount: number | null;
+  paymentDate: string | null;
+  reference: string | null;
+  paymentId: string | null;
+}
+
+export interface StudentFeeReportStudentRow {
+  student: {
+    id: string;
+    name: string;
+    email: string;
+    studentId?: string | null;
+  };
+  currentSemester?: {
+    code: StudentFeeSemesterCode;
+    label: StudentFeeSemesterCell['label'];
+    title: string;
+    session: string;
+  } | null;
+  semesters: StudentFeeSemesterCell[];
+  totals: {
+    paidSemesters: number;
+    unpaidSemesters: number;
+    paidAmount: number;
+  };
+}
+
+export interface StudentFeeReportResponse {
+  success: boolean;
+  totals: {
+    totalPaidStudents: number;
+    totalResults: number;
+    totalStudents?: number;
+    totalPaidSemesters?: number;
+    totalUnpaidSemesters?: number;
+  };
+  filters: {
+    search: string;
+    session: string;
+    semester: string;
+    registration: string;
+  };
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+  rows: StudentFeeReportRow[];
+  students?: StudentFeeReportStudentRow[];
+  semesters?: Array<{
+    code: StudentFeeSemesterCode;
+    label: StudentFeeSemesterCell['label'];
+    title: string;
+  }>;
 }
 
 interface StudentAffairsReceiptResponse {
@@ -1069,6 +1186,8 @@ export const studentAffairsAPI = {
     reference: string;
     paymentDate: string;
     amount: number;
+    semester: string;
+    session: string;
     notes?: string;
     fileUrl: string;
     fileName: string;
@@ -1080,8 +1199,31 @@ export const studentAffairsAPI = {
 
   getReceipts: async (params?: {
     status?: StudentFeeReceiptStatus;
-  }): Promise<{ success: boolean; receipts: StudentFeeReceipt[] }> => {
+    search?: string;
+    session?: string;
+    semester?: string;
+    registration?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{
+    success: boolean;
+    receipts: StudentFeeReceipt[];
+    awaitingAdminAction?: number;
+    pagination?: { page: number; limit: number; total: number; totalPages: number };
+  }> => {
     const response = await api.get('/student-affairs/receipts', { params });
+    return response.data;
+  },
+
+  getReceiptsReport: async (params?: {
+    search?: string;
+    session?: string;
+    semester?: string;
+    registration?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<StudentFeeReportResponse> => {
+    const response = await api.get('/student-affairs/receipts/report', { params });
     return response.data;
   },
 
@@ -1102,7 +1244,47 @@ export const studentAffairsAPI = {
     const response = await api.put(`/student-affairs/receipts/${id}/decision`, data);
     return response.data;
   },
+
+  forwardReceiptToAdmin: async (
+    id: string,
+    data: { note: string }
+  ): Promise<StudentAffairsReceiptResponse> => {
+    const response = await api.put(`/student-affairs/receipts/${id}/forward`, data);
+    return response.data;
+  },
+
+  markFeePaymentPaid: async (data: {
+    studentId: string;
+    semester: StudentFeeSemesterCode | StudentFeeSemesterCell['label'];
+    session: string;
+    amount: number;
+    paymentDate: string;
+    reference?: string;
+    notes?: string;
+  }): Promise<{ success: boolean; message: string; payment: StudentFeePayment }> => {
+    const response = await api.post('/student-affairs/fee-payments/mark-paid', data);
+    return response.data;
+  },
+
+  getFeeStatusSummary: async (): Promise<FeeStatusSummaryResponse> => {
+    const response = await api.get('/student-affairs/fee-status-summary');
+    return response.data;
+  },
 };
+
+export interface FeeStatusBySession {
+  session: string;
+  paidCount: number;
+  unpaidCount: number;
+  total: number;
+  paidPercentage: number;
+}
+
+export interface FeeStatusSummaryResponse {
+  success: boolean;
+  overall: { paidCount: number; unpaidCount: number; total: number };
+  bySession: FeeStatusBySession[];
+}
 
 // ─── Post-Event Reporting ─────────────────────────────────────────────────────
 

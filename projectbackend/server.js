@@ -9,6 +9,8 @@ const errorHandler = require('./middleware/errorHandler');
 // Initialize express app
 const app = express();
 
+app.set('trust proxy', 1);
+
 // Test database connection
 async function testDatabaseConnection() {
   try {

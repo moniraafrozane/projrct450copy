@@ -456,7 +456,7 @@ export default function StudentApplicationsPage() {
           <DialogHeader>
             <DialogTitle>Event Registration Log</DialogTitle>
             <DialogDescription>
-              View the real event registration history, attendance timeline, and admin actions.
+              View the real event registration history, attendance timeline and admin actions.
             </DialogDescription>
           </DialogHeader>
 

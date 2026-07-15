@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { PageHeader } from "@/components/patterns/page-header";
 import { SectionCard } from "@/components/patterns/section-card";
@@ -18,6 +18,7 @@ export default function AdminPostEventReportPdfPage() {
   const reportId = getReportId(params?.reportId as string | string[] | undefined);
   const eventId = searchParams.get("eventId") || "";
 
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   const [pdfUrl, setPdfUrl] = useState("");
   const [fileName, setFileName] = useState("post-event-report.pdf");
   const [loading, setLoading] = useState(true);
@@ -85,30 +86,28 @@ export default function AdminPostEventReportPdfPage() {
     }
   };
 
-  const handlePrint = async () => {
+  const handlePrint = () => {
     if (!pdfUrl) return;
 
-    const printWindow = window.open("", "_blank", "noopener,noreferrer");
-    if (!printWindow) {
-      setError("Popup was blocked. Please allow popups and try again.");
+    setPrinting(true);
+    setError("");
+
+    const printTab = window.open(pdfUrl, "_blank");
+    if (!printTab) {
+      setError("Popup was blocked. Please allow popups for this site and try again.");
+      setPrinting(false);
       return;
     }
 
-    try {
-      setPrinting(true);
-      setError("");
-      printWindow.location.href = pdfUrl;
-      printWindow.addEventListener(
-        "load",
-        () => {
-          printWindow.focus();
-          printWindow.print();
-        },
-        { once: true }
-      );
-    } finally {
-      setPrinting(false);
-    }
+    printTab.addEventListener(
+      "load",
+      () => {
+        printTab.focus();
+        printTab.print();
+      },
+      { once: true }
+    );
+    setPrinting(false);
   };
 
   return (
@@ -155,6 +154,7 @@ export default function AdminPostEventReportPdfPage() {
             </div>
 
             <iframe
+              ref={iframeRef}
               title="Post-event report PDF preview"
               src={pdfUrl}
               className="h-[78vh] w-full rounded-xl border border-border/70"
